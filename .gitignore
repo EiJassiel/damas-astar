@@ -1,0 +1,12 @@
+node_modules
+dist
+.tanstack
+.output
+.env
+.env.local
+bun.lockb
+*.log
+.kiro
+apps/.kiro
+.vscode
+apps/.vscode
