@@ -138,6 +138,14 @@ export function getSession() {
   };
 }
 
+export function clearSession() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('roomCode');
+  localStorage.removeItem('playerId');
+  localStorage.removeItem('playerName');
+  localStorage.removeItem('playerEmail');
+}
+
 export function notifyAuthUpdated() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent('auth:updated'));

@@ -3377,6 +3377,10 @@ p {
   position: fixed;
   inset: auto 50% 24px;
   z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
   width: min(520px, calc(100% - 32px));
   transform: translateX(-50%);
   border: 2px solid var(--accent-gold);
@@ -3388,17 +3392,25 @@ p {
     var(--bg-panel);
   color: white;
   text-align: center;
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.46),
+    0 0 40px var(--glow-gold),
+    inset 0 0 24px rgba(255, 209, 102, 0.06);
+  animation: resultReveal 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.result-banner-title {
+  margin: 0;
   font-family: var(--font-display);
   font-size: clamp(1.6rem, 4vw, 2.2rem);
   font-weight: 800;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   text-shadow: 0 0 18px rgba(255, 209, 102, 0.36);
-  box-shadow:
-    0 18px 50px rgba(0, 0, 0, 0.46),
-    0 0 40px var(--glow-gold),
-    inset 0 0 24px rgba(255, 209, 102, 0.06);
-  animation: resultReveal 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.result-banner-leave {
+  min-width: 220px;
 }
 
 .spin {

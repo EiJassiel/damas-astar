@@ -16,6 +16,7 @@ export function BattleArena({
   onMove,
   onSwitch,
   onForfeit,
+  onLeaveRoom,
   forfeitPending
 }: {
   battle: BattleState;
@@ -23,6 +24,7 @@ export function BattleArena({
   onMove: (moveId: string) => void;
   onSwitch: (targetIndex: number) => void;
   onForfeit: () => void;
+  onLeaveRoom: () => void;
   forfeitPending?: boolean;
 }) {
   const me = battle.players.find((player) => player.playerId === playerId) ?? battle.players[0];
@@ -38,7 +40,8 @@ export function BattleArena({
   const activeHpDelta = getHpDelta(active, hpSnapshot.current);
   const enemyHpDelta = getHpDelta(enemy, hpSnapshot.current);
   const turnState = getTurnState(me, rival, battle.status, activeUnable);
-  const forfeitLabel = battle.status === 'finished' ? 'Partida cerrada' : forfeitPending ? 'Saliendo...' : 'Salir';
+  const forfeitLabel =
+    battle.status === 'finished' ? 'Abandonar sala' : forfeitPending ? 'Saliendo...' : 'Salir';
   const { premium } = useAuthUser();
   const attackVfx = getAttackVfx(battle, active.pokemonId, enemy.pokemonId);
   const baseFieldType = normalizeFieldType(active.types[0]);
@@ -115,12 +118,16 @@ export function BattleArena({
           </div>
           <button
             className="forfeit-button"
-            disabled={battle.status === 'finished' || forfeitPending}
+            disabled={battle.status !== 'finished' && forfeitPending}
             onClick={() => {
+              if (battle.status === 'finished') {
+                onLeaveRoom();
+                return;
+              }
               if (window.confirm('Si sales ahora, pierdes la partida por abandono. ¿Confirmas la salida?')) onForfeit();
             }}
             type="button"
-            title="Abandonar"
+            title={battle.status === 'finished' ? 'Volver al inicio' : 'Abandonar'}
           >
             <DoorOpen size={17} />
             {forfeitLabel}
@@ -181,7 +188,13 @@ export function BattleArena({
 
       {battle.status === 'finished' && (
         <div className="result-banner">
-          {battle.forfeitedPlayerId === playerId ? 'Derrota por abandono' : battle.winnerPlayerId === playerId ? 'Victoria' : 'Derrota'}
+          <p className="result-banner-title">
+            {battle.forfeitedPlayerId === playerId ? 'Derrota por abandono' : battle.winnerPlayerId === playerId ? 'Victoria' : 'Derrota'}
+          </p>
+          <button className="primary-button result-banner-leave" onClick={onLeaveRoom} type="button">
+            <DoorOpen size={18} />
+            Abandonar sala
+          </button>
         </div>
       )}
     </main>

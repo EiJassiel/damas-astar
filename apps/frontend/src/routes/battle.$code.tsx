@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { BattleArena } from '../components/BattleArena';
 import { LoadingPanel } from '../components/ScreenShell';
 import { useBattlePolling } from '../hooks/useBattlePolling';
-import { api, getSession } from '../services/api';
+import { api, clearSession, getSession } from '../services/api';
 
 export const Route = createFileRoute('/battle/$code')({
   component: BattlePage
@@ -23,9 +23,15 @@ function BattlePage() {
     mutationFn: () => api.forfeitBattle(code, session.playerId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['battle', code] });
+      clearSession();
       await navigate({ to: '/' });
     }
   });
+
+  function leaveRoom() {
+    clearSession();
+    void navigate({ to: '/' });
+  }
 
   if (battle.isLoading) {
     return <LoadingPanel title="Cargando..." />;
@@ -42,6 +48,7 @@ function BattlePage() {
       onMove={(moveId) => mutation.mutate({ type: 'move', playerId: session.playerId, moveId, turn: battle.data.turn })}
       onSwitch={(targetIndex) => mutation.mutate({ type: 'switch', playerId: session.playerId, targetIndex, turn: battle.data.turn })}
       onForfeit={() => forfeitMutation.mutate()}
+      onLeaveRoom={leaveRoom}
       forfeitPending={forfeitMutation.isPending}
     />
   );
