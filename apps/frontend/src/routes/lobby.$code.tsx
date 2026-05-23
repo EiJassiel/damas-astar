@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { Copy, MailCheck, Users } from 'lucide-react';
-import { useEffect } from 'react';
+import { Copy, Crown, Loader2, MailCheck, Users } from 'lucide-react';
+import { useAuthUser } from '../context/AuthContext';
+import { useEffect, useState } from 'react';
+import { ScreenShell } from '../components/ScreenShell';
 import { getSession } from '../services/api';
 import { useRoomPolling } from '../hooks/useRoomPolling';
 
@@ -12,7 +14,11 @@ function LobbyPage() {
   const { code } = Route.useParams();
   const navigate = useNavigate();
   const { data: room, isLoading } = useRoomPolling(code);
+  const { premium: myPremium } = useAuthUser();
   const session = getSession();
+  const [copied, setCopied] = useState(false);
+  const playerCount = room?.players.length ?? 0;
+  const hasPremiumPlayer = room?.players.some((player) => player.premium) ?? myPremium;
 
   useEffect(() => {
     if (room?.status === 'team_selection' || room?.status === 'ready') {
@@ -23,29 +29,74 @@ function LobbyPage() {
     }
   }, [room?.status, code, navigate]);
 
+  async function copyCode() {
+    await navigator.clipboard.writeText(code);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+
   return (
-    <main className="form-screen">
-      <section className="command-panel lobby">
-        <p className="eyebrow">Lobby</p>
-        <h1>{code}</h1>
-        <button className="icon-line" onClick={() => navigator.clipboard.writeText(code)} type="button"><Copy size={18} />Copiar codigo</button>
+    <ScreenShell backLabel="Arena">
+      <section className={`command-panel command-panel-wide lobby-panel${hasPremiumPlayer ? ' lobby-panel-premium' : ''}`}>
+        <div className="room-code-badge" aria-label={`Codigo ${code}`}>
+          {code.split('').map((char, index) => (
+            <span key={`${char}-${index}`}>{char}</span>
+          ))}
+        </div>
+        <button className={`icon-line copy-button${copied ? ' copied' : ''}`} onClick={copyCode} type="button">
+          <Copy size={18} />
+          {copied ? 'Copiado' : 'Copiar codigo'}
+        </button>
+
+        <div className="lobby-status">
+          <span className={`lobby-pill${playerCount >= 2 ? ' ready' : ''}`}>
+            {playerCount}/2 entrenadores
+          </span>
+          <span className="lobby-pill waiting">
+            {isLoading ? 'Sincronizando' : playerCount >= 2 ? 'Completos' : 'Esperando rival'}
+          </span>
+        </div>
+
         <div className="player-list">
-          {room?.players.map((player) => (
-            <article key={player.playerId} className={player.playerId === session.playerId ? 'me' : ''}>
+          {room?.players.map((player) => {
+            const classes = [
+              player.playerId === session.playerId ? 'me' : '',
+              player.premium ? 'player-premium' : ''
+            ].filter(Boolean).join(' ');
+            return (
+            <article key={player.playerId} className={classes || undefined}>
               <Users size={18} />
-              <span>{player.name}</span>
-              <small>{player.ready ? 'equipo listo' : 'en lobby'}</small>
+              <div className="player-meta">
+                <span>{player.name}</span>
+                <small className={player.ready ? 'status-ready' : 'status-wait'}>
+                  {player.ready ? 'Equipo listo' : 'En lobby'}
+                </small>
+              </div>
+              {player.premium && (
+                <span className="player-premium-badge" title="Premium">
+                  <Crown size={14} />
+                </span>
+              )}
               {player.email && (
                 <span className="verified-mail" title={player.email}>
                   <MailCheck size={14} />
-                  Gmail verificado
                 </span>
               )}
             </article>
-          ))}
+            );
+          })}
+          {!isLoading && playerCount < 2 && (
+            <article className="player-placeholder">
+              <Loader2 className="spin" size={18} />
+              <div className="player-meta">
+                <span>Esperando rival...</span>
+                <small className="status-wait">Pendiente</small>
+              </div>
+            </article>
+          )}
         </div>
-        <p className="muted">{isLoading ? 'Buscando sala...' : 'Esperando al segundo jugador.'}</p>
+
       </section>
-    </main>
+    </ScreenShell>
   );
 }

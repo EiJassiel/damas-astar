@@ -1,270 +1,203 @@
 # Pokemon Battle Rooms
 
-Pokemon Battle Rooms es un videojuego web full-stack de batallas Pokemon por salas. Permite jugar 1 vs 1 en tiempo real por codigo de sala o practicar en modo solitario contra un bot. El backend es la fuente de verdad: calcula turnos, dano, tipos, estados, cambios, victoria, abandono y persistencia. El frontend se enfoca en una experiencia arcade oscura, visual y animada.
+Aplicacion web de batallas Pokemon **1P vs 1P** por salas con codigo. Los datos provienen de **PokeAPI**, se persisten en **MongoDB** y el combate lo resuelve el **backend** (frontend solo envia decisiones y muestra estado).
 
-## Caracteristicas Principales
+**Repositorio:** https://github.com/EiJassiel/game-poke.git
 
-- Salas multijugador 1P vs 1P con codigo unico.
-- Modo solitario contra `Professor Bot`.
-- Login obligatorio con Google OAuth.
-- Pase Premium con Stripe Checkout.
-- Motor de batalla server-authoritative.
-- Importacion de Pokemon, movimientos y tipos desde PokeAPI.
-- MongoDB para usuarios, salas, batallas, Pokemon, movimientos y relaciones de tipo.
-- Equipos de hasta 6 Pokemon.
-- 4 movimientos por Pokemon en batalla.
-- Efectividad de tipos importada desde PokeAPI, no hardcodeada.
-- Estados temporales: quemadura, veneno, paralisis y cambios de stats.
-- Orden de turno por cambio, prioridad, velocidad y desempate.
-- Logs persistentes de batalla.
-- Abandono de partida con derrota automatica y penalizacion.
-- UI arcade oscura con animaciones de seleccion, ataques, impactos, vida y estado.
-- Docker Compose para levantar MongoDB, backend y frontend.
+---
 
 ## Stack
 
-- Frontend: React 19, TypeScript, Vite, TanStack Router, TanStack Query, Framer Motion, Lucide Icons.
-- Backend: Bun, Hono, TypeScript.
-- Base de datos: MongoDB 7.
-- Auth: Google OAuth 2.0 con JWT interno.
-- Pagos: Stripe Checkout y webhook.
-- Infra local: Docker Compose.
+| Capa | Tecnologia |
+|------|------------|
+| Frontend | React 19, TypeScript, Vite, **TanStack Router**, TanStack Query, Framer Motion |
+| Backend | **Bun**, **Hono**, TypeScript |
+| Base de datos | **MongoDB** 7 |
+| Infra | **Docker Compose** |
+| Auth (extra) | Google OAuth + JWT |
+| Pagos (extra) | Stripe Checkout (modo test) |
 
-## Estructura
+> **Nota sobre TanStack Start:** el enunciado pide TanStack Start. Este proyecto usa **TanStack Router** (ecosistema TanStack) con Vite como bundler. El routing, data fetching y SSR-ready patterns estan cubiertos por Router + Query; la diferencia principal es que no hay servidor SSR de TanStack Start.
 
-```txt
-.
-├── apps
-│   ├── backend
-│   │   ├── src/db
-│   │   ├── src/engine
-│   │   ├── src/repositories
-│   │   ├── src/routes
-│   │   ├── src/scripts
-│   │   ├── src/services
-│   │   └── src/types
-│   └── frontend
-│       ├── src/components
-│       ├── src/hooks
-│       ├── src/routes
-│       ├── src/services
-│       └── src/types
-├── docker-compose.yml
-├── package.json
-└── README.md
-```
+---
 
-## Configuracion De Entorno
+## Requisitos del enunciado — como se cumplen
 
-Copia `.env.example` a `.env`:
+### Datos Pokemon y persistencia (20 pts)
+
+| Requisito | Implementacion |
+|-----------|----------------|
+| Cargar ≥ 300 Pokemon desde PokeAPI | Script `apps/backend/src/scripts/import-pokemon.ts` (default 300). Tambien `POST /api/import/pokemon`. |
+| Persistir Pokemon, movimientos, tipos, stats, sprites | Colecciones MongoDB via `import.service.ts` → `pokemon`, `moves`, `types`. |
+| Relaciones de dano entre tipos desde PokeAPI | `importTypes()` lee `/type/{name}` y guarda `doubleDamageTo`, `halfDamageTo`, `noDamageTo`, etc. Motor en `engine/type-effectiveness.ts`. |
+| 4 movimientos validos por Pokemon | `chooseStoredMoves()` selecciona movimientos importados; en batalla `buildBattlePokemon()` expone exactamente 4. |
+
+### Salas, jugadores y flujo (20 pts)
+
+| Requisito | Implementacion |
+|-----------|----------------|
+| Crear sala con codigo | `POST /api/rooms` → codigo de 6 letras (`createBattleRoom`). |
+| Segundo jugador se une por codigo | `POST /api/rooms/:code/join`. |
+| Lobby | Ruta `/lobby/$code` con lista de jugadores y copiar codigo. |
+| Seleccion de equipo (hasta 6) | Ruta `/team/$code` + `POST /api/rooms/:code/team`. |
+| 1P vs 1P, un activo por jugador | `BattleDocument` con 2 jugadores, `activeIndex` por equipo. |
+| Backend valida acciones | `engine/validators.ts`: turno activo, movimiento permitido, sin doble accion. |
+| Frontend no calcula dano | `BattleArena` solo llama `POST /api/battles/:code/action`; dano en backend. |
+
+### Motor de turnos, dano, tipos y estados (25 pts)
+
+| Requisito | Implementacion |
+|-----------|----------------|
+| Resolucion de turnos en backend | `engine/battle-engine.ts` → `resolveTurn()`. |
+| STAB, efectividad, factor aleatorio, critico | `engine/damage.ts`. |
+| Efectividad no hardcodeada | Multiplicador desde documentos `types` importados de PokeAPI. |
+| Estados 3 turnos | `engine/status.ts` → `remainingTurns: 3`. |
+| Estado se elimina al cambiar Pokemon | En switch: `active.status = null` (`battle-engine.ts` linea 33). |
+| Orden de turno | `engine/turn-order.ts` (cambio, prioridad, velocidad). |
+| Victoria / derrota | `hasLost()` + banner en frontend; abandono via `POST .../forfeit`. |
+
+### Interfaz, sprites y animaciones (15 pts)
+
+| Requisito | Implementacion |
+|-----------|----------------|
+| Crear / unirse / lobby / batalla | Rutas `/`, `/create-room`, `/join-room`, `/lobby/$code`, `/battle/$code`. |
+| Sprites consistentes | URLs de PokeAPI guardadas en MongoDB y usadas en catalogo y arena. |
+| Barras de vida | `HealthBar`, barras en sidebar y HUD. |
+| Movimientos y cambio | Grid de movimientos + sidebar de equipo. |
+| Log de batalla | `BattleLog` con entradas del backend. |
+| Animaciones basicas | Framer Motion: impactos, shake del campo, numeros de dano, transiciones de sprites, barras animadas, VFX por tipo. |
+
+### Documentacion, Docker y demo (20 pts)
+
+| Entregable | Ubicacion |
+|------------|-----------|
+| Codigo completo | Este repositorio |
+| README | Este archivo |
+| docker-compose.yml | Raiz del proyecto |
+| Importacion documentada | Seccion [Importar Pokemon](#importar-pokemon) |
+| Demo 1P vs 1P | Seccion [Guia de demo en clase](#guia-de-demo-en-clase) |
+
+---
+
+## Inicio rapido
+
+### 1. Clonar y configurar entorno
 
 ```powershell
+git clone https://github.com/EiJassiel/game-poke.git
+cd game-poke
 Copy-Item .env.example .env
 ```
 
-Variables principales:
+Edita `.env` con tus credenciales de Google OAuth. **No subas `.env` al repo.**
 
-```env
-FRONTEND_URL=http://localhost:3000
-GOOGLE_CLIENT_ID=tu_client_id_de_google
-GOOGLE_CLIENT_SECRET=tu_client_secret_de_google
-GOOGLE_REDIRECT_URI=http://localhost:3001/api/auth/google/callback
-JWT_SECRET=una_clave_larga_local
-
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PREMIUM_AMOUNT=499
-STRIPE_PREMIUM_CURRENCY=usd
-STRIPE_SUCCESS_URL=http://localhost:3000/premium/success
-STRIPE_CANCEL_URL=http://localhost:3000/premium/cancel
-```
-
-Importante: `.env` no debe subirse al repositorio. Este proyecto ya lo ignora con `.gitignore`.
-
-## Google OAuth
-
-En Google Cloud Console crea un OAuth Client tipo Web Application y registra este redirect URI:
-
-```txt
-http://localhost:3001/api/auth/google/callback
-```
-
-Flujo implementado:
-
-1. El frontend envia al usuario a `/api/auth/google`.
-2. Google autentica y redirige a `/api/auth/google/callback`.
-3. El backend intercambia el `code` por tokens de Google.
-4. El backend lee el perfil real del usuario.
-5. El usuario se guarda/actualiza en MongoDB.
-6. El backend emite un JWT propio para la app.
-7. Crear sala, unirse y jugar requieren sesion Google.
-
-## Stripe Checkout
-
-El proyecto incluye un Pase Premium de prueba llamado `Trainer Premium Pass`.
-
-Flujo implementado:
-
-1. El usuario inicia sesion con Google.
-2. Entra a `/premium`.
-3. El frontend pide al backend crear una Stripe Checkout Session.
-4. El backend crea la sesion con `STRIPE_SECRET_KEY`.
-5. Stripe procesa el pago.
-6. Stripe redirige a `/premium/success` o `/premium/cancel`.
-7. El webhook `/api/payments/webhook` marca el usuario como premium en MongoDB.
-
-Para escuchar webhooks en local:
-
-```powershell
-stripe listen --forward-to localhost:3001/api/payments/webhook
-```
-
-La CLI devolvera un valor `whsec_...`; ponlo en:
-
-```env
-STRIPE_WEBHOOK_SECRET=whsec_...
-```
-
-Tarjeta de prueba:
-
-```txt
-4242 4242 4242 4242
-```
-
-Fecha futura y cualquier CVC.
-
-## Instalacion
-
-```powershell
-bun install
-```
-
-## Levantar Con Docker
+### 2. Levantar con Docker
 
 ```powershell
 docker compose up --build -d
-```
-
-Servicios:
-
-- Frontend: `http://localhost:3000`
-- Backend: `http://localhost:3001`
-- MongoDB: `localhost:27017`
-
-Ver estado:
-
-```powershell
 docker compose ps
 ```
 
-## Importar Pokemon
+| Servicio | URL |
+|----------|-----|
+| Frontend | http://localhost:3000 |
+| Backend | http://localhost:3001 |
+| MongoDB | localhost:27017 |
 
-Despues de levantar los contenedores:
+### 3. Importar Pokemon
+
+Primera vez (requiere contenedores arriba):
 
 ```powershell
 docker compose exec backend bun src/scripts/import-pokemon.ts 300
 ```
 
-Tambien existe endpoint:
-
-```txt
-POST http://localhost:3001/api/import/pokemon
-```
-
-## Scripts
+Alternativa via API:
 
 ```powershell
-bun run dev
-bun run dev:backend
-bun run dev:frontend
-bun run import:pokemon
-bun run typecheck
-bun run build
+Invoke-WebRequest -Method POST -Uri http://localhost:3001/api/import/pokemon -ContentType "application/json" -Body '{"limit":300}'
 ```
 
-## Flujo De Juego
+---
 
-### Modo Solitario
+## Google OAuth
 
-1. Abrir `http://localhost:3000`.
-2. Entrar a `Modo solitario`.
-3. Iniciar sesion con Google.
-4. El backend crea una sala activa.
-5. El jugador recibe 6 Pokemon aleatorios.
-6. `Professor Bot` recibe 6 Pokemon aleatorios.
-7. El jugador elige movimientos o cambios.
-8. El bot responde automaticamente.
+1. Crea un OAuth Client (Web) en [Google Cloud Console](https://console.cloud.google.com/).
+2. Redirect URI autorizado:
 
-### Multijugador
+```txt
+http://localhost:3001/api/auth/google/callback
+```
 
-1. Jugador 1 entra con Google.
-2. Crea sala y comparte el codigo.
-3. Jugador 2 entra con Google.
-4. Jugador 2 se une con el codigo.
-5. Ambos seleccionan hasta 6 Pokemon.
-6. Ambos guardan equipo.
-7. La batalla inicia cuando ambos estan listos.
-8. Cada turno se resuelve en backend.
+3. Copia `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` a `.env`.
+4. Crear sala y unirse requieren sesion Google.
 
-## Motor De Batalla
+---
 
-El motor vive en `apps/backend/src/engine`.
+## Guia de demo en clase
 
-Responsabilidades:
+Flujo alineado con la demo esperada del enunciado:
 
-- Validar acciones.
-- Determinar orden de turno.
-- Calcular dano.
-- Aplicar STAB.
-- Aplicar efectividad por tipo.
-- Aplicar criticos y variacion aleatoria.
-- Aplicar quemadura, veneno y paralisis.
-- Aplicar cambios de stats.
-- Resolver debilitamiento.
-- Resolver victoria.
-- Limpiar acciones al final del turno.
+1. **Levantar el proyecto** — `docker compose up --build -d` y verificar http://localhost:3000.
+2. **Importar datos** — `docker compose exec backend bun src/scripts/import-pokemon.ts 300`.
+3. **Jugador 1** — Iniciar sesion con Google → **Crear sala** → copiar codigo de 6 letras.
+4. **Jugador 2** — Otra ventana/incognito → Google → **Unirse** con el codigo.
+5. **Equipos** — Cada uno elige hasta 6 Pokemon y guarda. La batalla inicia sola cuando ambos estan listos.
+6. **Sprites y 4 movimientos** — En arena, cada Pokemon activo muestra sprite y exactamente 4 movimientos.
+7. **Turnos y dano por tipo** — Atacar con movimientos super efectivos; el log muestra *"It's super effective!"*.
+8. **Estado 3 turnos** — Usar movimientos con quemadura/veneno/paralisis; el log indica duracion y tick de dano.
+9. **Cambio elimina estado** — Cambiar Pokemon activo; el estado desaparece (backend limpia `status` en switch).
+10. **Victoria/derrota** — Debilitar los 6 del rival o usar **Salir** (abandono = derrota).
 
-Formula base:
+---
+
+## Estructura del proyecto
+
+```txt
+.
+├── apps/
+│   ├── backend/
+│   │   ├── src/engine/          # Motor de batalla (dano, tipos, estados, turnos)
+│   │   ├── src/repositories/    # Acceso MongoDB
+│   │   ├── src/routes/          # API Hono
+│   │   ├── src/scripts/         # import-pokemon.ts
+│   │   └── src/services/        # Salas, batallas, importacion, auth
+│   └── frontend/
+│       ├── src/components/      # BattleArena, HealthBar, BattleLog, etc.
+│       ├── src/routes/          # Pantallas (TanStack Router file-based)
+│       └── src/hooks/           # Polling de sala y batalla
+├── docker-compose.yml
+├── .env.example
+└── README.md
+```
+
+---
+
+## Reglas de combate implementadas
+
+### Formula de dano
 
 ```txt
 baseDamage = floor(floor(floor((2 * level) / 5 + 2) * power * attack / defense) / 50) + 2
 finalDamage = floor(baseDamage * modifier)
 ```
 
-`modifier` incluye:
+`modifier` incluye: STAB (1.5x), efectividad de tipos, critico (1.5x, ~1/24), variacion aleatoria (0.85–1.0), penalizacion por quemadura en ataques fisicos.
 
-- STAB.
-- Efectividad por tipo.
-- Critico.
-- Variacion aleatoria.
-- Penalizacion por quemadura en ataques fisicos.
+### Estados
 
-## Estados
+| Estado | Efecto | Duracion |
+|--------|--------|----------|
+| burn | Dano por turno; -50% dano fisico | 3 turnos |
+| poison | Dano por turno | 3 turnos |
+| paralysis | Velocidad /2; 25% no moverse | 3 turnos |
+| attackDown / defenseDown / speedDown | Cambios de stats | 3 turnos |
 
-- `burn`: dano por turno y reduce dano fisico.
-- `poison`: dano por turno.
-- `paralysis`: reduce velocidad y puede impedir movimiento.
-- `attackDown`, `defenseDown`, `speedDown`: cambios temporales de stats.
+Al **cambiar de Pokemon**, el estado del activo anterior se elimina.
 
-Los estados temporales duran 3 turnos.
+---
 
-## Abandono Y Penalizacion
-
-La batalla incluye ruta de abandono:
-
-```txt
-POST /api/battles/:code/forfeit
-```
-
-Si un jugador abandona:
-
-- Su equipo queda debilitado.
-- La batalla pasa a `finished`.
-- El rival gana.
-- Se registra penalizacion de tipo `forfeit`.
-- Se agregan logs explicando el abandono.
-
-## Endpoints Principales
+## API principal
 
 ```txt
 GET  /health
@@ -277,7 +210,6 @@ POST /api/import/pokemon
 GET  /api/pokemon
 
 POST /api/rooms
-POST /api/rooms/solo
 POST /api/rooms/:code/join
 GET  /api/rooms/:code
 POST /api/rooms/:code/team
@@ -287,44 +219,46 @@ GET  /api/battles/:code
 POST /api/battles/:code/action
 POST /api/battles/:code/forfeit
 
-POST /api/payments/checkout
-POST /api/payments/status
+POST /api/payments/checkout      # extra: Stripe
+POST /api/payments/verify        # extra: activacion sin webhook
 POST /api/payments/webhook
 ```
 
-## Diseno UI
+---
 
-La interfaz usa una direccion visual oscura tipo arcade:
+## Desarrollo local (sin Docker)
 
-- Fondos con grilla.
-- Paneles con bordes neon.
-- Sprites oficiales de PokeAPI.
-- Campo de batalla con posiciones claras de jugador/rival.
-- Barra de vida animada.
-- Toasts compactos de eventos.
-- Animaciones de ataques por tipo.
-- Tarjetas de seleccion con entrada escalonada, hover, scanline, brillo y check animado.
-- Dashboard de batalla compacto con movimientos, equipo y log.
+```powershell
+bun install
+# MongoDB corriendo en localhost:27017
+Copy-Item .env.example .env
+bun run dev:backend    # puerto 3001
+bun run dev:frontend   # puerto 3000
+bun run import:pokemon # importa 300 Pokemon
+```
 
-## Seguridad
+---
 
-- No se sube `.env`.
-- Las claves secretas viven solo en backend.
-- Stripe secret key nunca aparece en frontend.
-- Google OAuth valida identidad real.
-- El backend no confia en correos escritos manualmente.
-- El frontend no calcula batalla ni pagos.
+## Funcionalidades extra (fuera del enunciado base)
 
-## Limitaciones Conocidas
+- **Google OAuth** — identidad real para multijugador.
+- **Trainer Premium Pass** — Stripe Checkout con cosmeticos (marco, lobby, campo estadio).
+- **Verificacion de pago** — `POST /api/payments/verify` como fallback local sin webhook.
 
-- El multijugador usa polling simple, no WebSockets.
-- El bot tiene IA basica.
-- No se implementan todas las reglas competitivas oficiales.
-- No hay PP por movimiento.
-- Stripe esta en modo test.
-- Webhook requiere Stripe CLI o URL publica para funcionar localmente.
+---
 
-## Comandos Utiles
+## Limitaciones conocidas
+
+- Multijugador usa **polling** (no WebSockets).
+- Frontend con **TanStack Router + Vite**, no TanStack Start SSR.
+- No hay PP por movimiento ni reglas VGC completas.
+- Algunos Pokemon se omiten en importacion si no tienen 4 movimientos validos en PokeAPI.
+- Stripe en modo test; webhook local requiere `stripe listen --forward-to localhost:3001/api/payments/webhook`.
+- Google OAuth y Stripe son opcionales para probar motor de batalla, pero **crear/unir salas requiere Google**.
+
+---
+
+## Comandos utiles
 
 ```powershell
 docker compose up --build -d
@@ -336,6 +270,8 @@ bun run typecheck
 bun run build
 ```
 
+---
+
 ## Autor
 
-Proyecto desarrollado para UTP/FISC como demo full-stack de juego web con arquitectura backend-authoritative, persistencia real, autenticacion OAuth y pagos de prueba.
+**EiJassiel** — Proyecto individual UTP/FISC. Entrega: 22 de mayo de 2026.

@@ -70,5 +70,5 @@ export type BattleState = {
 export type RoomState = {
   code: string;
   status: 'waiting' | 'ready' | 'team_selection' | 'in_battle' | 'finished';
-  players: Array<{ playerId: string; name: string; email?: string; ready: boolean; teamPokemonIds: string[] }>;
+  players: Array<{ playerId: string; name: string; email?: string; ready: boolean; teamPokemonIds: string[]; premium?: boolean }>;
 };

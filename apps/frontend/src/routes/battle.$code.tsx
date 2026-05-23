@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { BattleArena } from '../components/BattleArena';
+import { LoadingPanel } from '../components/ScreenShell';
 import { useBattlePolling } from '../hooks/useBattlePolling';
 import { api, getSession } from '../services/api';
 
@@ -26,8 +27,13 @@ function BattlePage() {
     }
   });
 
-  if (battle.isLoading) return <main className="form-screen"><p className="muted">Sincronizando batalla...</p></main>;
-  if (!battle.data) return <main className="form-screen"><p className="error">No se encontro la batalla.</p></main>;
+  if (battle.isLoading) {
+    return <LoadingPanel title="Cargando..." />;
+  }
+
+  if (!battle.data) {
+    return <LoadingPanel title="Batalla no encontrada" />;
+  }
 
   return (
     <BattleArena

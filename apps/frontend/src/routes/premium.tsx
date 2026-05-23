@@ -1,6 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { CreditCard, Loader2, ShieldCheck, Sparkles } from 'lucide-react';
+import { CreditCard, Crown, Loader2, Sparkles } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
+import { AuthBox } from '../components/AuthBox';
+import { FormFeedback } from '../components/FormFeedback';
+import { PanelIcon, ScreenShell } from '../components/ScreenShell';
+import { isAuthSessionError } from '../components/SessionExpiredNotice';
+import { useAuthUser } from '../context/AuthContext';
 import { api, getAuthUser } from '../services/api';
 
 export const Route = createFileRoute('/premium')({
@@ -8,58 +13,55 @@ export const Route = createFileRoute('/premium')({
 });
 
 function PremiumPage() {
-  const authUser = getAuthUser();
+  const { authUser, premium, refreshPremium, markSessionExpired } = useAuthUser();
   const [loading, setLoading] = useState(false);
-  const [premium, setPremium] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!authUser) return;
-    api.getPremiumStatus(authUser.token).then((status) => setPremium(status.premium)).catch(() => null);
-  }, [authUser]);
+    void refreshPremium();
+  }, [authUser, refreshPremium]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!authUser) {
+    const user = getAuthUser();
+    if (!user) {
       setError('Inicia sesion con Google para comprar el pase.');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const checkout = await api.createPremiumCheckout(authUser.token);
+      const checkout = await api.createPremiumCheckout(user.token);
       window.location.href = checkout.checkoutUrl;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Stripe no pudo iniciar el checkout.');
+      if (isAuthSessionError(err)) {
+        markSessionExpired();
+        setError('');
+      } else {
+        setError(err instanceof Error ? err.message : 'No se pudo iniciar el pago.');
+      }
       setLoading(false);
     }
   }
 
   return (
-    <main className="form-screen">
-      <form className="command-panel premium-panel" onSubmit={submit}>
-        <p className="eyebrow">Stripe Checkout</p>
+    <ScreenShell backLabel="Arena">
+      <form className="command-panel premium-panel panel-tone-premium" onSubmit={submit}>
+        <PanelIcon><Sparkles size={30} /></PanelIcon>
         <h1>Trainer Premium Pass</h1>
-        <div className="premium-icon"><Sparkles size={34} /></div>
-        <p className="form-hint">Desbloquea cosmeticos arcade: marco premium, brillo de perfil y futuras skins visuales de sala.</p>
-        {authUser ? (
-          <div className="google-session">
-            <ShieldCheck size={18} />
-            <span>{authUser.email}</span>
+        {premium && (
+          <div className="premium-owned">
+            <Crown size={16} />
+            <strong>Pase activo</strong>
           </div>
-        ) : (
-          <a className="google-button" href={api.googleLoginUrl('/premium')}>
-            <ShieldCheck size={18} />
-            Continuar con Google
-          </a>
         )}
-        {premium && <p className="premium-owned">Pase activo en esta cuenta.</p>}
-        {error && <p className="error">{error}</p>}
-        <button className="primary-button" disabled={loading || premium || !authUser} type="submit">
+        <AuthBox next="/premium" />
+        <FormFeedback error={error} next="/premium" />
+        <button className="primary-button panel-submit premium-cta" disabled={loading || premium || !authUser} type="submit">
           {loading ? <Loader2 className="spin" size={18} /> : <CreditCard size={18} />}
-          {premium ? 'Premium activo' : 'Comprar pase de prueba'}
+          {premium ? 'Premium activo' : 'Comprar pase'}
         </button>
       </form>
-    </main>
+    </ScreenShell>
   );
 }

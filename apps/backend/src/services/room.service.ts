@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { findBattle, saveBattle } from '../repositories/battle.repository';
 import { findMovesByIds } from '../repositories/move.repository';
-import { findPokemonByIds, listPokemon } from '../repositories/pokemon.repository';
+import { findPokemonByIds } from '../repositories/pokemon.repository';
 import { createRoom, findRoom, saveRoom } from '../repositories/room.repository';
 import type { BattleDocument, BattleMove, BattlePokemon, RoomDocument } from '../types/battle.types';
 import type { MoveDocument, PokemonDocument } from '../types/pokemon.types';
@@ -10,7 +10,7 @@ import { createRoomCode } from '../utils/code';
 import { sampleSize } from '../utils/random';
 import { buildBattleStats, LEVEL, randomIvs, zeroStatStages } from '../engine/stats';
 
-export async function createBattleRoom(playerName: string, playerEmail: string) {
+export async function createBattleRoom(playerName: string, playerEmail: string, premium = false) {
   let code = createRoomCode();
   while (await findRoom(code)) code = createRoomCode();
   const playerId = randomUUID();
@@ -18,7 +18,7 @@ export async function createBattleRoom(playerName: string, playerEmail: string) 
   const room: RoomDocument = {
     code,
     status: 'waiting',
-    players: [{ playerId, name: playerName.trim(), email: playerEmail, joinedAt: now, ready: false, teamPokemonIds: [] }],
+    players: [{ playerId, name: playerName.trim(), email: playerEmail, joinedAt: now, ready: false, teamPokemonIds: [], premium }],
     createdAt: now,
     updatedAt: now
   };
@@ -26,86 +26,12 @@ export async function createBattleRoom(playerName: string, playerEmail: string) 
   return { code, playerId };
 }
 
-export async function createSoloBattleRoom(playerName: string, playerEmail: string) {
-  let code = createRoomCode();
-  while (await findRoom(code)) code = createRoomCode();
-
-  const catalog = await listPokemon({ page: 1, limit: 80 });
-  const eligible = catalog.items.filter((pokemon) => pokemon.moveIds.length >= 4);
-  if (eligible.length < 12) throw new AppError('Importa Pokemon antes de iniciar modo solitario.', 409);
-
-  const humanTeam = sampleSize(eligible, 6);
-  const botTeam = sampleSize(eligible, 6);
-  const playerId = randomUUID();
-  const botId = `bot-${randomUUID()}`;
-  const now = new Date();
-
-  const room: RoomDocument = {
-    code,
-    status: 'in_battle',
-    players: [
-      {
-        playerId,
-        name: playerName.trim(),
-        email: playerEmail,
-        joinedAt: now,
-        ready: true,
-        teamPokemonIds: humanTeam.map((pokemon) => pokemon._id!.toString())
-      },
-      {
-        playerId: botId,
-        name: 'Professor Bot',
-        email: 'bot@pokemon.local',
-        joinedAt: now,
-        ready: true,
-        teamPokemonIds: botTeam.map((pokemon) => pokemon._id!.toString()),
-        isBot: true
-      }
-    ],
-    createdAt: now,
-    updatedAt: now
-  };
-
-  const battle: BattleDocument = {
-    roomCode: code,
-    status: 'active',
-    turn: 1,
-    players: [
-      {
-        playerId,
-        name: room.players[0].name,
-        email: room.players[0].email,
-        team: await Promise.all(humanTeam.map(buildBattlePokemon)),
-        activeIndex: 0,
-        selectedAction: null
-      },
-      {
-        playerId: botId,
-        name: 'Professor Bot',
-        email: 'bot@pokemon.local',
-        team: await Promise.all(botTeam.map(buildBattlePokemon)),
-        activeIndex: 0,
-        selectedAction: null,
-        isBot: true
-      }
-    ],
-    battleLog: [{ turn: 1, message: 'Modo solitario iniciado. Professor Bot acepta el desafio.', createdAt: now }],
-    winnerPlayerId: null,
-    createdAt: now,
-    updatedAt: now
-  };
-
-  await createRoom(room);
-  await saveBattle(battle);
-  return { code, playerId };
-}
-
-export async function joinBattleRoom(code: string, playerName: string, playerEmail: string) {
+export async function joinBattleRoom(code: string, playerName: string, playerEmail: string, premium = false) {
   const room = assertFound(await findRoom(code), 'Sala no encontrada.');
   if (room.players.length >= 2) throw new AppError('La sala ya tiene dos jugadores.', 409);
   const playerId = randomUUID();
   if (room.players.some((player) => player.email === playerEmail)) throw new AppError('Ese correo ya esta dentro de la sala.', 409);
-  room.players.push({ playerId, name: playerName.trim(), email: playerEmail, joinedAt: new Date(), ready: false, teamPokemonIds: [] });
+  room.players.push({ playerId, name: playerName.trim(), email: playerEmail, joinedAt: new Date(), ready: false, teamPokemonIds: [], premium });
   room.status = 'team_selection';
   await saveRoom(room);
   return { code: room.code, playerId };

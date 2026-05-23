@@ -12,6 +12,7 @@ export type RoomPlayer = {
   ready: boolean;
   teamPokemonIds: string[];
   isBot?: boolean;
+  premium?: boolean;
 };
 
 export type RoomDocument = {

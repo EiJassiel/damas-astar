@@ -1,7 +1,9 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { Loader2, Play } from 'lucide-react';
+import { Loader2, Play, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { RosterDock } from '../components/RosterDock';
+import { ScreenShell } from '../components/ScreenShell';
 import { TeamSelector } from '../components/TeamSelector';
 import { useRoomPolling } from '../hooks/useRoomPolling';
 import { api, getSession } from '../services/api';
@@ -36,6 +38,11 @@ function TeamPage() {
   const me = room.data?.players.find((player) => player.playerId === session.playerId);
   const rival = room.data?.players.find((player) => player.playerId !== session.playerId);
 
+  const rosterSlots = useMemo(() => {
+    const items = catalog.data?.items ?? [];
+    return selected.map((id) => items.find((item) => item.id === id));
+  }, [selected, catalog.data?.items]);
+
   useEffect(() => {
     if (room.data?.status === 'in_battle') navigate({ to: '/battle/$code', params: { code } });
   }, [room.data?.status, code, navigate]);
@@ -51,16 +58,15 @@ function TeamPage() {
   }
 
   return (
-    <main className="team-screen">
+    <ScreenShell backTo="/" backLabel="Arena" variant="team">
       <header className="team-header">
         <div>
-          <p className="eyebrow">Room {code}</p>
-          <h1>Selecciona tu escuadra</h1>
+          <h1>Equipo · {code}</h1>
         </div>
         <div className="team-actions">
           <button className="primary-button" disabled={selected.length === 0 || mutation.isPending} onClick={() => mutation.mutate()} type="button">
             {mutation.isPending ? <Loader2 className="spin" size={18} /> : null}
-            Guardar equipo {selected.length}/6
+            Guardar {selected.length}/6
           </button>
           <button className="secondary-button" disabled={!canStart || start.isPending} onClick={() => start.mutate()} type="button">
             {start.isPending ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
@@ -68,21 +74,34 @@ function TeamPage() {
           </button>
         </div>
       </header>
+
+      <RosterDock slots={rosterSlots} onRemove={toggle} />
+
       <section className="readiness-strip">
         <span className={me?.ready ? 'ready' : ''}>Tu equipo: {me?.ready ? 'guardado' : 'sin guardar'}</span>
-        <span className={rival?.ready ? 'ready' : ''}>Rival: {rival?.ready ? 'listo' : 'pendiente'}</span>
-        <span>Seleccionados: {selected.length}/6</span>
+        <span className={rival?.ready ? 'ready' : ''}>Rival: {rival?.name ?? '—'} · {rival?.ready ? 'listo' : 'pendiente'}</span>
+        <span className={selected.length === 6 ? 'ready' : ''}>Slots: {selected.length}/6</span>
       </section>
+
       {(mutation.error || start.error) && (
         <p className="team-error">{(mutation.error ?? start.error) instanceof Error ? (mutation.error ?? start.error)?.message : 'No se pudo completar la accion.'}</p>
       )}
-      <section className="filters">
-        <input placeholder="Buscar Pokemon" value={search} onChange={(event) => setSearch(event.target.value)} />
-        <select value={type} onChange={(event) => setType(event.target.value)}>
-          {types.map((value) => <option key={value} value={value}>{value || 'todos los tipos'}</option>)}
+
+      <section className="filters filters-bar">
+        <label className="search-field">
+          <Search size={16} />
+          <input placeholder="Buscar Pokemon..." value={search} onChange={(event) => setSearch(event.target.value)} />
+        </label>
+        <select value={type} onChange={(event) => setType(event.target.value)} aria-label="Filtrar por tipo">
+          {types.map((value) => <option key={value} value={value}>{value || 'Todos los tipos'}</option>)}
         </select>
       </section>
-      {catalog.isLoading ? <p className="muted">Cargando catalogo...</p> : <TeamSelector pokemon={catalog.data?.items ?? []} selectedIds={selected} onToggle={toggle} />}
-    </main>
+
+      {catalog.isLoading ? (
+        <p className="muted catalog-loading"><Loader2 className="spin" size={18} /></p>
+      ) : (
+        <TeamSelector pokemon={catalog.data?.items ?? []} selectedIds={selected} onToggle={toggle} />
+      )}
+    </ScreenShell>
   );
 }

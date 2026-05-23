@@ -1,5 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRootRoute, Outlet } from '@tanstack/react-router';
+import { MotionConfig } from 'framer-motion';
+import { AccountBar } from '../components/AccountBar';
+import { AuthProvider } from '../context/AuthContext';
 import '../styles.css';
 
 const queryClient = new QueryClient();
@@ -18,7 +21,15 @@ export const Route = createRootRoute({
 function Root() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Outlet />
+      <AuthProvider>
+        <MotionConfig reducedMotion="user">
+          <div className="app-shell">
+            <div className="grain-overlay" aria-hidden="true" />
+            <AccountBar />
+            <Outlet />
+          </div>
+        </MotionConfig>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

@@ -1,6 +1,11 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { Loader2, Plus, ShieldCheck } from 'lucide-react';
+import { Loader2, Plus } from 'lucide-react';
 import { FormEvent, useState } from 'react';
+import { AuthBox } from '../components/AuthBox';
+import { FormFeedback } from '../components/FormFeedback';
+import { PanelIcon, ScreenShell } from '../components/ScreenShell';
+import { isAuthSessionError } from '../components/SessionExpiredNotice';
+import { useAuthUser } from '../context/AuthContext';
 import { api, getAuthUser, saveSession } from '../services/api';
 
 export const Route = createFileRoute('/create-room')({
@@ -9,60 +14,47 @@ export const Route = createFileRoute('/create-room')({
 
 function CreateRoomPage() {
   const navigate = useNavigate();
-  const authUser = getAuthUser();
+  const { authUser, markSessionExpired } = useAuthUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!authUser) {
+    const user = getAuthUser();
+    if (!user) {
       setError('Inicia sesion con Google para crear una sala.');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const room = await api.createRoom(authUser.token);
-      saveSession({ code: room.code, playerId: room.playerId, playerName: authUser.name, playerEmail: authUser.email });
+      const room = await api.createRoom(user.token);
+      saveSession({ code: room.code, playerId: room.playerId, playerName: user.name, playerEmail: user.email });
       await navigate({ to: '/lobby/$code', params: { code: room.code } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear la sala.');
+      if (isAuthSessionError(err)) {
+        markSessionExpired();
+        setError('');
+      } else {
+        setError(err instanceof Error ? err.message : 'No se pudo crear la sala.');
+      }
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="form-screen">
+    <ScreenShell backLabel="Arena">
       <form className="command-panel" onSubmit={submit}>
-        <p className="eyebrow">Nueva sala</p>
-        <h1>Activa una Battle Room</h1>
+        <PanelIcon><Plus size={28} /></PanelIcon>
+        <h1>Crear sala</h1>
         <AuthBox next="/create-room" />
-        <p className="form-hint">Tu nombre y correo salen directamente de Google.</p>
-        {error && <p className="error">{error}</p>}
-        <button className="primary-button" disabled={loading || !authUser} type="submit">
+        <FormFeedback error={error} next="/create-room" />
+        <button className="primary-button panel-submit" disabled={loading || !authUser} type="submit">
           {loading ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
-          Crear
+          Crear sala
         </button>
       </form>
-    </main>
-  );
-}
-
-function AuthBox({ next }: { next: string }) {
-  const authUser = getAuthUser();
-  if (authUser) {
-    return (
-      <div className="google-session">
-        <ShieldCheck size={18} />
-        <span>{authUser.email}</span>
-      </div>
-    );
-  }
-  return (
-    <a className="google-button" href={api.googleLoginUrl(next)}>
-      <ShieldCheck size={18} />
-      Continuar con Google
-    </a>
+    </ScreenShell>
   );
 }

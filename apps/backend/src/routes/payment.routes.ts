@@ -1,11 +1,16 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { createPremiumCheckout, getPremiumStatus, handleStripeWebhook } from '../services/payment.service';
+import { createPremiumCheckout, getPremiumStatus, handleStripeWebhook, verifyPremiumCheckout } from '../services/payment.service';
 
 export const paymentRoutes = new Hono();
 
 const authSchema = z.object({
   authToken: z.string().min(1)
+});
+
+const verifySchema = z.object({
+  authToken: z.string().min(1),
+  sessionId: z.string().min(1)
 });
 
 paymentRoutes.post('/checkout', async (c) => {
@@ -16,6 +21,11 @@ paymentRoutes.post('/checkout', async (c) => {
 paymentRoutes.post('/status', async (c) => {
   const body = authSchema.parse(await c.req.json());
   return c.json(await getPremiumStatus(body.authToken));
+});
+
+paymentRoutes.post('/verify', async (c) => {
+  const body = verifySchema.parse(await c.req.json());
+  return c.json(await verifyPremiumCheckout(body.authToken, body.sessionId));
 });
 
 paymentRoutes.post('/webhook', async (c) => {

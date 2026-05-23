@@ -36,9 +36,10 @@ export async function createPremiumCheckout(authToken: string) {
 
   const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
   const unitAmount = process.env.STRIPE_PREMIUM_AMOUNT ?? '499';
+  const successUrl = process.env.STRIPE_SUCCESS_URL ?? `${frontendUrl}/premium/success?session_id={CHECKOUT_SESSION_ID}`;
   const body = new URLSearchParams({
     mode: 'payment',
-    success_url: process.env.STRIPE_SUCCESS_URL ?? `${frontendUrl}/premium/success`,
+    success_url: successUrl.includes('{CHECKOUT_SESSION_ID}') ? successUrl : `${successUrl}${successUrl.includes('?') ? '&' : '?'}session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: process.env.STRIPE_CANCEL_URL ?? `${frontendUrl}/premium/cancel`,
     customer_email: user.email,
     client_reference_id: user.googleId,
@@ -67,12 +68,55 @@ export async function createPremiumCheckout(authToken: string) {
 export async function getPremiumStatus(authToken: string) {
   const user = verifyAuthToken(authToken);
   if (!user) throw new AppError('Sesion Google requerida.', 401);
+  return getPremiumStatusByGoogleId(user.googleId);
+}
+
+export async function getPremiumStatusByGoogleId(googleId: string) {
   const { users } = await collections();
-  const stored = await users.findOne({ googleId: user.googleId });
+  const stored = await users.findOne({ googleId });
   return {
     premium: Boolean(stored?.premium),
     premiumSince: stored?.premiumSince ?? null
   };
+}
+
+export async function verifyPremiumCheckout(authToken: string, sessionId: string) {
+  const user = verifyAuthToken(authToken);
+  if (!user) throw new AppError('Sesion Google requerida.', 401);
+
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) throw new AppError('Falta STRIPE_SECRET_KEY en el backend.', 500);
+
+  const response = await fetch(`${stripeApi}/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+    headers: { Authorization: `Bearer ${secretKey}` }
+  });
+  const session = (await response.json()) as {
+    id?: string;
+    payment_status?: string;
+    client_reference_id?: string;
+    customer_email?: string;
+    metadata?: { googleId?: string; email?: string };
+    error?: { message?: string };
+  };
+  if (!response.ok || !session.id) {
+    throw new AppError(session.error?.message ?? 'No se pudo verificar el pago en Stripe.', 502, session);
+  }
+
+  const sessionGoogleId = session.metadata?.googleId ?? session.client_reference_id;
+  if (sessionGoogleId && sessionGoogleId !== user.googleId) {
+    throw new AppError('Este pago pertenece a otra cuenta.', 403);
+  }
+
+  if (session.payment_status === 'paid') {
+    await markPremium({
+      googleId: user.googleId,
+      email: session.metadata?.email ?? session.customer_email ?? user.email,
+      sessionId: session.id
+    });
+  }
+
+  const status = await getPremiumStatusByGoogleId(user.googleId);
+  return { ...status, paymentStatus: session.payment_status ?? 'unknown', verified: true };
 }
 
 export async function handleStripeWebhook(payload: string, signature: string | null) {
@@ -98,11 +142,37 @@ function isCheckoutCompleted(event: StripeCheckoutCompleted | { type: string }):
 }
 
 async function markPremium({ googleId, email, sessionId }: { googleId?: string; email?: string; sessionId: string }) {
+  if (!googleId && !email) throw new AppError('Webhook Stripe sin googleId ni email.', 400);
+
   const { users } = await collections();
   const now = new Date();
-  const filter = googleId ? { googleId } : { email };
-  await users.updateOne(
-    filter,
+  const normalizedEmail = email?.toLowerCase();
+
+  if (googleId) {
+    await users.updateOne(
+      { googleId },
+      {
+        $set: {
+          premium: true,
+          premiumSince: now,
+          stripeCheckoutSessionId: sessionId,
+          updatedAt: now,
+          ...(normalizedEmail ? { email: normalizedEmail } : {})
+        },
+        $setOnInsert: {
+          googleId,
+          email: normalizedEmail ?? '',
+          name: normalizedEmail?.split('@')[0] ?? 'Entrenador',
+          createdAt: now
+        }
+      },
+      { upsert: true }
+    );
+    return;
+  }
+
+  const result = await users.updateOne(
+    { email: normalizedEmail },
     {
       $set: {
         premium: true,
@@ -112,6 +182,9 @@ async function markPremium({ googleId, email, sessionId }: { googleId?: string; 
       }
     }
   );
+  if (result.matchedCount === 0) {
+    throw new AppError('No se encontro el usuario para activar premium.', 404);
+  }
 }
 
 function verifyStripeSignature(payload: string, signature: string, secret: string) {

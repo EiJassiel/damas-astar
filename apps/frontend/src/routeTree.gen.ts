@@ -9,7 +9,6 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SoloRouteImport } from './routes/solo'
 import { Route as PremiumRouteImport } from './routes/premium'
 import { Route as JoinRoomRouteImport } from './routes/join-room'
 import { Route as CreateRoomRouteImport } from './routes/create-room'
@@ -21,11 +20,6 @@ import { Route as LobbyCodeRouteImport } from './routes/lobby.$code'
 import { Route as BattleCodeRouteImport } from './routes/battle.$code'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 
-const SoloRoute = SoloRouteImport.update({
-  id: '/solo',
-  path: '/solo',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const PremiumRoute = PremiumRouteImport.update({
   id: '/premium',
   path: '/premium',
@@ -82,7 +76,6 @@ export interface FileRoutesByFullPath {
   '/create-room': typeof CreateRoomRoute
   '/join-room': typeof JoinRoomRoute
   '/premium': typeof PremiumRouteWithChildren
-  '/solo': typeof SoloRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/battle/$code': typeof BattleCodeRoute
   '/lobby/$code': typeof LobbyCodeRoute
@@ -95,7 +88,6 @@ export interface FileRoutesByTo {
   '/create-room': typeof CreateRoomRoute
   '/join-room': typeof JoinRoomRoute
   '/premium': typeof PremiumRouteWithChildren
-  '/solo': typeof SoloRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/battle/$code': typeof BattleCodeRoute
   '/lobby/$code': typeof LobbyCodeRoute
@@ -109,7 +101,6 @@ export interface FileRoutesById {
   '/create-room': typeof CreateRoomRoute
   '/join-room': typeof JoinRoomRoute
   '/premium': typeof PremiumRouteWithChildren
-  '/solo': typeof SoloRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/battle/$code': typeof BattleCodeRoute
   '/lobby/$code': typeof LobbyCodeRoute
@@ -124,7 +115,6 @@ export interface FileRouteTypes {
     | '/create-room'
     | '/join-room'
     | '/premium'
-    | '/solo'
     | '/auth/callback'
     | '/battle/$code'
     | '/lobby/$code'
@@ -137,7 +127,6 @@ export interface FileRouteTypes {
     | '/create-room'
     | '/join-room'
     | '/premium'
-    | '/solo'
     | '/auth/callback'
     | '/battle/$code'
     | '/lobby/$code'
@@ -150,7 +139,6 @@ export interface FileRouteTypes {
     | '/create-room'
     | '/join-room'
     | '/premium'
-    | '/solo'
     | '/auth/callback'
     | '/battle/$code'
     | '/lobby/$code'
@@ -164,7 +152,6 @@ export interface RootRouteChildren {
   CreateRoomRoute: typeof CreateRoomRoute
   JoinRoomRoute: typeof JoinRoomRoute
   PremiumRoute: typeof PremiumRouteWithChildren
-  SoloRoute: typeof SoloRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   BattleCodeRoute: typeof BattleCodeRoute
   LobbyCodeRoute: typeof LobbyCodeRoute
@@ -173,13 +160,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/solo': {
-      id: '/solo'
-      path: '/solo'
-      fullPath: '/solo'
-      preLoaderRoute: typeof SoloRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/premium': {
       id: '/premium'
       path: '/premium'
@@ -271,7 +251,6 @@ const rootRouteChildren: RootRouteChildren = {
   CreateRoomRoute: CreateRoomRoute,
   JoinRoomRoute: JoinRoomRoute,
   PremiumRoute: PremiumRouteWithChildren,
-  SoloRoute: SoloRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   BattleCodeRoute: BattleCodeRoute,
   LobbyCodeRoute: LobbyCodeRoute,

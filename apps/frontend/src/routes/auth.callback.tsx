@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { ScreenShell } from '../components/ScreenShell';
 import { saveAuthToken } from '../services/api';
 
 export const Route = createFileRoute('/auth/callback')({
@@ -16,7 +17,7 @@ function AuthCallbackPage() {
     const token = params.get('token');
     const next = params.get('next') || '/';
     if (!token) {
-      setError('Google no devolvio una sesion valida.');
+      setError('No se pudo iniciar sesion.');
       return;
     }
 
@@ -24,17 +25,22 @@ function AuthCallbackPage() {
       saveAuthToken(token);
       navigate({ to: next });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo iniciar sesion con Google.');
+      setError(err instanceof Error ? err.message : 'No se pudo iniciar sesion.');
     }
   }, [navigate]);
 
   return (
-    <main className="form-screen">
-      <section className="command-panel">
-        <p className="eyebrow">Google OAuth</p>
-        <h1>{error ? 'Sesion no valida' : 'Validando entrenador'}</h1>
-        {error ? <p className="error">{error}</p> : <p className="muted auth-loading"><Loader2 className="spin" size={18} /> Conectando con Google...</p>}
+    <ScreenShell backLabel="Arena">
+      <section className={`command-panel${error ? ' panel-tone-danger' : ''}`}>
+        <h1>{error ? 'Error de sesion' : 'Conectando...'}</h1>
+        {error ? (
+          <p className="error">{error}</p>
+        ) : (
+          <p className="muted auth-loading">
+            <Loader2 className="spin" size={18} />
+          </p>
+        )}
       </section>
-    </main>
+    </ScreenShell>
   );
 }

@@ -1,10 +1,11 @@
+import { ScrollText } from 'lucide-react';
 import type { BattleState } from '../types/battle';
 
 export function BattleLog({ battle }: { battle: BattleState }) {
   return (
     <aside className="battle-log">
-      <h3>Log</h3>
-      <div>
+      <h3><ScrollText size={14} /> Combate</h3>
+      <div className="battle-log-feed">
         {battle.battleLog.slice(-12).reverse().map((entry, index) => (
           <p className={eventTone(entry.message)} key={`${entry.createdAt}-${index}`}>
             <span>T{entry.turn}</span>

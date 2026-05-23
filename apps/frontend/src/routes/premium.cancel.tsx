@@ -1,4 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
+import { XCircle } from 'lucide-react';
+import { PanelIcon, ScreenShell } from '../components/ScreenShell';
 
 export const Route = createFileRoute('/premium/cancel')({
   component: PremiumCancelPage
@@ -6,13 +8,12 @@ export const Route = createFileRoute('/premium/cancel')({
 
 function PremiumCancelPage() {
   return (
-    <main className="form-screen">
-      <section className="command-panel">
-        <p className="eyebrow">Pago cancelado</p>
-        <h1>No se realizo cargo</h1>
-        <p className="form-hint">Puedes volver a intentarlo cuando quieras.</p>
-        <Link className="secondary-button" to="/premium">Volver al pase</Link>
+    <ScreenShell backLabel="Arena">
+      <section className="command-panel panel-tone-danger">
+        <PanelIcon><XCircle size={28} /></PanelIcon>
+        <h1>Pago cancelado</h1>
+        <Link className="secondary-button panel-submit" to="/premium">Volver al pase</Link>
       </section>
-    </main>
+    </ScreenShell>
   );
 }

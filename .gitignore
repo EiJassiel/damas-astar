@@ -4,9 +4,14 @@ dist
 .output
 .env
 .env.local
+.env.*
+!.env.example
 bun.lockb
 *.log
 .kiro
 apps/.kiro
 .vscode
 apps/.vscode
+.agents
+skills-lock.json
+apps/frontend/dist

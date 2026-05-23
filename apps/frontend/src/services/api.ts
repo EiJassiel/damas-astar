@@ -1,5 +1,35 @@
 import type { BattleState, PokemonCatalogItem, RoomState } from '../types/battle';
 
+export class AuthSessionError extends Error {
+  readonly code = 'SESSION_EXPIRED';
+
+  constructor(message = 'Sesion expirada.') {
+    super(message);
+    this.name = 'AuthSessionError';
+  }
+}
+
+const AUTH_ERROR_MARKERS = [
+  'sesion expirada',
+  'sesion invalida',
+  'sesion google invalida',
+  'sesion google requerida',
+  'session expired'
+] as const;
+
+function normalizeAuthText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .trim();
+}
+
+export function isAuthErrorMessage(message: string) {
+  const normalized = normalizeAuthText(message);
+  return AUTH_ERROR_MARKERS.some((marker) => normalized.includes(marker));
+}
+
 function resolveApiUrl() {
   const configured = import.meta.env.VITE_API_URL;
   if (configured) return configured;
@@ -11,6 +41,15 @@ function resolveApiUrl() {
 
 const API_URL = resolveApiUrl();
 
+function dispatchSessionExpired(message: string) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent('auth:session-expired', {
+      detail: { message, path: `${window.location.pathname}${window.location.search}` }
+    })
+  );
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -20,7 +59,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? 'Request failed');
+  const errorMessage = typeof data.error === 'string' ? data.error : 'Request failed';
+
+  if (!res.ok) {
+    if (isAuthErrorMessage(errorMessage)) {
+      clearAuthUser('expired');
+      dispatchSessionExpired(errorMessage);
+      throw new AuthSessionError(errorMessage);
+    }
+    throw new Error(errorMessage);
+  }
+
   return data as T;
 }
 
@@ -28,8 +77,6 @@ export const api = {
   googleLoginUrl: (next = '/') => `${API_URL}/api/auth/google?next=${encodeURIComponent(next)}`,
   createRoom: (playerAuthToken: string) =>
     request<{ code: string; playerId: string }>('/api/rooms', { method: 'POST', body: JSON.stringify({ playerAuthToken }) }),
-  createSoloRoom: (playerAuthToken: string) =>
-    request<{ code: string; playerId: string }>('/api/rooms/solo', { method: 'POST', body: JSON.stringify({ playerAuthToken }) }),
   joinRoom: (code: string, playerAuthToken: string) =>
     request<{ code: string; playerId: string }>(`/api/rooms/${code}/join`, { method: 'POST', body: JSON.stringify({ playerAuthToken }) }),
   getRoom: (code: string) => request<RoomState>(`/api/rooms/${code}`),
@@ -51,6 +98,15 @@ export const api = {
     request<{ checkoutUrl: string; sessionId?: string }>('/api/payments/checkout', { method: 'POST', body: JSON.stringify({ authToken }) }),
   getPremiumStatus: (authToken: string) =>
     request<{ premium: boolean; premiumSince: string | null }>('/api/payments/status', { method: 'POST', body: JSON.stringify({ authToken }) }),
+  verifyPremiumCheckout: (authToken: string, sessionId: string) =>
+    request<{ premium: boolean; premiumSince: string | null; paymentStatus: string; verified: boolean }>(
+      '/api/payments/verify',
+      { method: 'POST', body: JSON.stringify({ authToken, sessionId }) }
+    ),
+  getAuthProfile: (authToken: string) =>
+    request<{ user: Omit<AuthUser, 'token'>; premium: boolean; premiumSince: string | null }>('/api/auth/me', {
+      headers: { Authorization: `Bearer ${authToken}` }
+    }),
   importPokemon: () => request('/api/import/pokemon', { method: 'POST', body: JSON.stringify({ limit: 300 }) })
 };
 
@@ -82,11 +138,19 @@ export function getSession() {
   };
 }
 
+export function notifyAuthUpdated() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('auth:updated'));
+}
+
 export function saveAuthToken(token: string) {
   if (typeof window === 'undefined') return null;
+  if (isAuthTokenExpired(token)) throw new Error('El token recibido ya expiro.');
   const user = decodeAuthToken(token);
   localStorage.setItem('authToken', token);
   localStorage.setItem('authUser', JSON.stringify(user));
+  sessionStorage.removeItem('authExpiredNotice');
+  notifyAuthUpdated();
   return user;
 }
 
@@ -95,26 +159,74 @@ export function getAuthUser(): AuthUser | null {
   const token = localStorage.getItem('authToken');
   const raw = localStorage.getItem('authUser');
   if (!token || !raw) return null;
+
+  if (isAuthTokenExpired(token)) {
+    clearAuthUser('expired');
+    dispatchSessionExpired('Sesion expirada.');
+    return null;
+  }
+
   try {
     return { ...JSON.parse(raw), token } as AuthUser;
   } catch {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('authUser');
+    clearAuthUser('invalid');
     return null;
   }
 }
 
-export function clearAuthUser() {
+export function clearAuthUser(reason?: 'expired' | 'invalid') {
   if (typeof window === 'undefined') return;
   localStorage.removeItem('authToken');
   localStorage.removeItem('authUser');
+  if (reason === 'expired') {
+    sessionStorage.setItem('authExpiredNotice', '1');
+  } else {
+    sessionStorage.removeItem('authExpiredNotice');
+  }
+}
+
+export function consumeAuthExpiredNotice() {
+  if (typeof window === 'undefined') return false;
+  const flagged = sessionStorage.getItem('authExpiredNotice') === '1';
+  sessionStorage.removeItem('authExpiredNotice');
+  return flagged;
+}
+
+export function isAuthTokenExpired(token: string) {
+  try {
+    const payload = readJwtPayload(token);
+    if (!payload.exp) return false;
+    return payload.exp <= Math.floor(Date.now() / 1000);
+  } catch {
+    return true;
+  }
+}
+
+export function getAuthTokenRemainingMs(token: string) {
+  try {
+    const payload = readJwtPayload(token);
+    if (!payload.exp) return null;
+    return Math.max(0, payload.exp * 1000 - Date.now());
+  } catch {
+    return 0;
+  }
+}
+
+function readJwtPayload(token: string): { exp?: number } {
+  const [, payload] = token.split('.');
+  if (!payload) throw new Error('Token invalido.');
+  const normalized = payload.replaceAll('-', '+').replaceAll('_', '/');
+  return JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
 }
 
 function decodeAuthToken(token: string): Omit<AuthUser, 'token'> {
-  const [, payload] = token.split('.');
-  if (!payload) throw new Error('Token Google invalido.');
-  const normalized = payload.replaceAll('-', '+').replaceAll('_', '/');
-  const data = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
+  const data = readJwtPayload(token) as {
+    sub: string;
+    email: string;
+    name: string;
+    picture?: string;
+  };
+  if (!data.sub || !data.email || !data.name) throw new Error('Token Google invalido.');
   return {
     googleId: data.sub,
     email: data.email,

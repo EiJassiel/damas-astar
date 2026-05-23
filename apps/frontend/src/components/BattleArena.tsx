@@ -1,5 +1,8 @@
-import { useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useRef, type CSSProperties } from 'react';
+import { motion, useAnimate } from 'framer-motion';
+import { useAuthUser } from '../context/AuthContext';
+import { BattleFieldBackdrop, normalizeFieldType } from './BattleFieldBackdrop';
+import { getFieldScene } from '../lib/battleFieldScenes';
 import { DoorOpen, Gauge, Shield, Swords } from 'lucide-react';
 import type { BattlePlayer, BattlePokemon, BattleState } from '../types/battle';
 import { BattleLog } from './BattleLog';
@@ -36,7 +39,13 @@ export function BattleArena({
   const enemyHpDelta = getHpDelta(enemy, hpSnapshot.current);
   const turnState = getTurnState(me, rival, battle.status, activeUnable);
   const forfeitLabel = battle.status === 'finished' ? 'Partida cerrada' : forfeitPending ? 'Saliendo...' : 'Salir';
+  const { premium } = useAuthUser();
   const attackVfx = getAttackVfx(battle, active.pokemonId, enemy.pokemonId);
+  const baseFieldType = normalizeFieldType(active.types[0]);
+  const fieldType = premium ? 'stadium' : baseFieldType;
+  const fieldScene = getFieldScene(fieldType);
+  const fieldImpact = eventClass === 'event-hit';
+  const [battlefieldRef, animateBattlefield] = useAnimate();
 
   useEffect(() => {
     hpSnapshot.current = Object.fromEntries(
@@ -44,8 +53,15 @@ export function BattleArena({
     );
   }, [battle]);
 
+  useEffect(() => {
+    if (!attackVfx) return;
+    const layer = battlefieldRef.current?.querySelector('.field-canvas');
+    if (!layer) return;
+    void animateBattlefield(layer, { x: [0, -9, 9, -6, 6, 0] }, { duration: 0.38 });
+  }, [attackVfx?.key, animateBattlefield, battlefieldRef]);
+
   return (
-    <main className={`arena game-arena arena-type-${active.types[0] ?? 'normal'}`}>
+    <main className={`arena game-arena arena-type-${fieldType}${premium ? ' arena-premium' : ''}`}>
       {/* Left sidebar: team switcher */}
       <aside className="team-sidebar" aria-label="Equipo">
         <p className="sidebar-label">EQUIPO</p>
@@ -86,7 +102,6 @@ export function BattleArena({
       <div className="arena-main">
         <header className="arena-top game-top">
           <div>
-            <p className="eyebrow">Room {battle.roomCode}</p>
             <h1>Turno {battle.turn}</h1>
           </div>
           <div className="battle-score">
@@ -97,7 +112,6 @@ export function BattleArena({
           <div className={`turn-signal ${turnState.tone}`}>
             <Gauge size={18} />
             <strong>{turnState.title}</strong>
-            <span>{turnState.detail}</span>
           </div>
           <button
             className="forfeit-button"
@@ -106,16 +120,26 @@ export function BattleArena({
               if (window.confirm('Si sales ahora, pierdes la partida por abandono. ¿Confirmas la salida?')) onForfeit();
             }}
             type="button"
-            title="Abandonar la partida aplica derrota por abandono"
+            title="Abandonar"
           >
             <DoorOpen size={17} />
             {forfeitLabel}
           </button>
         </header>
 
-        <section className="battlefield" aria-label="Campo de batalla">
-          <div className="field-sky" />
-          <div className="field-lines" />
+        <section
+          className={`battlefield battlefield-type-${fieldType}${premium ? ' battlefield-premium' : ''}`}
+          aria-label="Campo de batalla"
+          ref={battlefieldRef}
+          style={
+            {
+              '--platform-top': fieldScene.platformTop,
+              '--platform-shadow': fieldScene.platformShadow,
+              '--platform-rim': fieldScene.platformRim
+            } as CSSProperties
+          }
+        >
+          <BattleFieldBackdrop type={fieldType} impact={fieldImpact} />
           <motion.div
             className={`event-toast ${eventClass}`}
             key={`${battle.turn}-${latestEvent}`}
@@ -138,11 +162,18 @@ export function BattleArena({
             <div>
               <small>FIGHT</small>
               <strong>{active.name}</strong>
-              <span>{turnState.command}</span>
             </div>
           </div>
           <div className="moves-grid game-moves">
-            {active.moves.map((move) => <MoveButton key={move.moveId} move={move} disabled={moveLocked} onClick={() => onMove(move.moveId)} />)}
+            {active.moves.map((move, index) => (
+              <MoveButton
+                key={move.moveId}
+                hotkey={index + 1}
+                move={move}
+                disabled={moveLocked}
+                onClick={() => onMove(move.moveId)}
+              />
+            ))}
           </div>
           <BattleLog battle={battle} />
         </section>
@@ -273,18 +304,18 @@ function getHpDelta(pokemon: BattlePokemon, snapshot: Record<string, number>) {
 
 function getTurnState(me: BattlePlayer, rival: BattlePlayer, status: BattleState['status'], activeUnable: boolean) {
   if (status === 'finished') {
-    return { tone: 'done', title: 'Finalizada', detail: 'La batalla terminó', command: 'Resultado confirmado' };
+    return { tone: 'done', title: 'Finalizada' };
   }
   if (activeUnable && !me.selectedAction) {
-    return { tone: 'danger', title: 'Cambio obligatorio', detail: 'Tu activo está debilitado', command: 'Elige un cambio para continuar' };
+    return { tone: 'danger', title: 'Cambio obligatorio' };
   }
   if (!me.selectedAction) {
-    return { tone: 'ready', title: 'Tu decisión', detail: 'Ataca o cambia', command: 'Elige una acción' };
+    return { tone: 'ready', title: 'Tu turno' };
   }
   if (!rival?.selectedAction) {
-    return { tone: 'waiting', title: 'Esperando rival', detail: 'Tu acción ya quedó enviada', command: 'Acción enviada. Esperando al rival' };
+    return { tone: 'waiting', title: 'Esperando rival' };
   }
-  return { tone: 'waiting', title: 'Resolviendo', detail: 'Ambos eligieron acción', command: 'Resolviendo el turno' };
+  return { tone: 'waiting', title: 'Resolviendo' };
 }
 
 function getEventClass(message: string) {
