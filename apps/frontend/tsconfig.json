@@ -9,5 +9,21 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src"],
+  "exclude": [
+    "src/components/AccountBar.tsx",
+    "src/components/AuthBox.tsx",
+    "src/components/BattleArena.tsx",
+    "src/components/BattleFieldBackdrop.tsx",
+    "src/components/BattleLog.tsx",
+    "src/components/HealthBar.tsx",
+    "src/components/MoveButton.tsx",
+    "src/components/PokemonCard.tsx",
+    "src/components/RosterDock.tsx",
+    "src/components/SessionExpiredNotice.tsx",
+    "src/components/StatusBadge.tsx",
+    "src/components/TeamSelector.tsx",
+    "src/lib/battleFieldScenes.ts",
+    "src/types/battle.ts"
+  ]
 }

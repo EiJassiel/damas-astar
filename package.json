@@ -1,16 +1,18 @@
 {
-  "name": "pokemon-battle-rooms",
+  "name": "damas",
   "private": true,
   "type": "module",
   "workspaces": [
     "apps/backend",
-    "apps/frontend"
+    "apps/frontend",
+    "apps/ai-astar-service"
   ],
   "scripts": {
     "dev": "bun run --filter '*' dev",
-    "dev:backend": "bun run --filter @pokemon-battle-rooms/backend dev",
-    "dev:frontend": "bun run --filter @pokemon-battle-rooms/frontend dev",
-    "import:pokemon": "bun run --filter @pokemon-battle-rooms/backend import:pokemon",
+    "dev:backend": "bun run --filter @damas/backend dev",
+    "dev:frontend": "bun run --filter @damas/frontend dev",
+    "dev:ai-astar": "bun run --filter @damas/ai-astar-service dev",
+    "test": "bun run --filter @damas/ai-astar-service test",
     "typecheck": "bun run --filter '*' typecheck",
     "build": "bun run --filter '*' build"
   }

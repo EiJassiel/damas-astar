@@ -1,0 +1,26 @@
+{
+  "title": "Damas Overview",
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Partidas activas",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "damas_active_games", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Movimientos procesados",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "targets": [{ "expr": "damas_moves_processed_total", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Llamadas IA",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "targets": [{ "expr": "damas_ai_calls_total", "refId": "A" }]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

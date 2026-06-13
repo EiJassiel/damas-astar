@@ -1,4 +1,4 @@
-name: pokemon-battle-rooms
+name: damas
 
 services:
   mongo:
@@ -14,6 +14,14 @@ services:
       timeout: 5s
       retries: 5
 
+  ai-astar-service:
+    build: ./apps/ai-astar-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+
   backend:
     build: ./apps/backend
     restart: unless-stopped
@@ -21,22 +29,20 @@ services:
       - "3001:3001"
     environment:
       - PORT=3001
-      - MONGO_URI=mongodb://mongo:27017/pokemon_battle_rooms
+      - MONGO_URI=mongodb://mongo:27017/damas
       - CORS_ORIGIN=*
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:3001/api/auth/google/callback}
-      - JWT_SECRET=${JWT_SECRET:-dev-pokemon-battle-rooms-secret}
+      - JWT_SECRET=${JWT_SECRET:-dev-damas-secret-change-me}
+      - AI_ASTAR_SERVICE_URL=http://ai-astar-service:3004
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - STRIPE_PREMIUM_AMOUNT=${STRIPE_PREMIUM_AMOUNT:-499}
       - STRIPE_PREMIUM_CURRENCY=${STRIPE_PREMIUM_CURRENCY:-usd}
-      - STRIPE_SUCCESS_URL=${STRIPE_SUCCESS_URL:-http://localhost:3000/premium/success}
-      - STRIPE_CANCEL_URL=${STRIPE_CANCEL_URL:-http://localhost:3000/premium/cancel}
     depends_on:
       mongo:
         condition: service_healthy
+      ai-astar-service:
+        condition: service_started
 
   frontend:
     build:
@@ -44,8 +50,33 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:3001
     depends_on:
       - backend
 
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+
 volumes:
   mongo_data:
+  grafana_data:

@@ -1,24 +1,43 @@
 import { Hono } from 'hono';
-import { getGoogleLoginUrl, handleGoogleCallback, verifyAuthToken } from '../services/auth.service';
-import { getPremiumStatusByGoogleId } from '../services/payment.service';
-import { AppError } from '../utils/errors';
+import { z } from 'zod';
+import { getUserProfile, loginUser, registerUser, updateUserProfile } from '../services/auth.service';
+import { requireAuth } from '../utils/auth';
 
 export const authRoutes = new Hono();
 
-authRoutes.get('/google', (c) => c.redirect(getGoogleLoginUrl(c.req.query('next'))));
-
-authRoutes.get('/google/callback', async (c) => {
-  const code = c.req.query('code');
-  const state = c.req.query('state');
-  if (!code || !state) throw new AppError('Google OAuth no devolvio code/state.', 400);
-  return c.redirect(await handleGoogleCallback(code, state));
+const credentialsSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6).max(128)
 });
 
-authRoutes.get('/me', async (c) => {
-  const header = c.req.header('authorization');
-  const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
-  const user = verifyAuthToken(token);
-  if (!user) throw new AppError('No hay sesion Google.', 401);
-  const premium = await getPremiumStatusByGoogleId(user.googleId);
-  return c.json({ user, ...premium });
+const registerSchema = credentialsSchema.extend({
+  name: z.string().min(1).max(48)
+});
+
+const profileSchema = z.object({
+  name: z.string().min(1).max(48).optional(),
+  boardTheme: z.enum(['classic', 'neon', 'wood']).optional(),
+  pieceStyle: z.enum(['sphere', 'flat', 'marble']).optional()
+});
+
+authRoutes.post('/register', async (c) => {
+  const body = registerSchema.parse(await c.req.json());
+  return c.json(await registerUser(body.name, body.email, body.password), 201);
+});
+
+authRoutes.post('/login', async (c) => {
+  const body = credentialsSchema.parse(await c.req.json());
+  return c.json(await loginUser(body.email, body.password));
+});
+
+authRoutes.get('/me', requireAuth, async (c) => {
+  const authUser = c.get('authUser');
+  return c.json(await getUserProfile(authUser.userId));
+});
+
+authRoutes.patch('/profile', requireAuth, async (c) => {
+  const authUser = c.get('authUser');
+  const body = profileSchema.parse(await c.req.json());
+  const user = await updateUserProfile(authUser.userId, body);
+  return c.json({ user });
 });

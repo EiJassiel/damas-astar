@@ -1,9 +1,4 @@
-import { useAuthUser } from '../context/AuthContext';
-import { isAuthFailureMessage } from './SessionExpiredNotice';
-
-export function FormFeedback({ error }: { error: string; next?: string }) {
-  const { sessionExpired } = useAuthUser();
-
-  if (!error || sessionExpired || isAuthFailureMessage(error)) return null;
-  return <p className="error">{error}</p>;
+export function FormFeedback({ error }: { error: string }) {
+  if (!error) return null;
+  return <p className="form-error">{error}</p>;
 }

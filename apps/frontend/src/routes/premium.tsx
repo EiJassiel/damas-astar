@@ -1,67 +1,75 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { CreditCard, Crown, Loader2, Sparkles } from 'lucide-react';
-import { FormEvent, useEffect, useState } from 'react';
-import { AuthBox } from '../components/AuthBox';
+import { createFileRoute, Link } from '@tanstack/react-router';
+import { Crown, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { FormFeedback } from '../components/FormFeedback';
-import { PanelIcon, ScreenShell } from '../components/ScreenShell';
-import { isAuthSessionError } from '../components/SessionExpiredNotice';
-import { useAuthUser } from '../context/AuthContext';
-import { api, getAuthUser } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
 
 export const Route = createFileRoute('/premium')({
   component: PremiumPage
 });
 
 function PremiumPage() {
-  const { authUser, premium, refreshPremium, markSessionExpired } = useAuthUser();
+  const { authUser, refresh } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState(authUser?.premium ? 'Tienda activada' : 'Sin compra activa');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    void refreshPremium();
-  }, [authUser, refreshPremium]);
+    const sessionId = new URLSearchParams(window.location.search).get('session_id');
+    if (!sessionId || !authUser) return;
+    setLoading(true);
+    api.verifyPremiumCheckout(sessionId)
+      .then((result) => {
+        setStatus(result.premium ? 'Tienda activada' : `Pago ${result.paymentStatus}`);
+        return refresh();
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'No se pudo verificar el pago.'))
+      .finally(() => setLoading(false));
+  }, [authUser, refresh]);
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    const user = getAuthUser();
-    if (!user) {
-      setError('Inicia sesion con Google para comprar el pase.');
-      return;
-    }
+  async function checkout() {
     setLoading(true);
     setError('');
     try {
-      const checkout = await api.createPremiumCheckout(user.token);
-      window.location.href = checkout.checkoutUrl;
+      const result = await api.createPremiumCheckout();
+      window.location.href = result.checkoutUrl;
     } catch (err) {
-      if (isAuthSessionError(err)) {
-        markSessionExpired();
-        setError('');
-      } else {
-        setError(err instanceof Error ? err.message : 'No se pudo iniciar el pago.');
-      }
+      setError(err instanceof Error ? err.message : 'No se pudo iniciar Stripe Checkout.');
       setLoading(false);
     }
   }
 
+  if (!authUser) {
+    return (
+      <main className="bot-entry-screen">
+        <section className="bot-entry-card">
+          <div className="bot-entry-icon"><Crown size={24} /></div>
+          <h1>Tienda</h1>
+          <p className="bot-entry-copy">Inicia sesion para comprar tableros y fichas en modo prueba.</p>
+          <Link className="bot-entry-submit" to="/login">Iniciar sesion</Link>
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <ScreenShell backLabel="Arena">
-      <form className="command-panel premium-panel panel-tone-premium" onSubmit={submit}>
-        <PanelIcon><Sparkles size={30} /></PanelIcon>
-        <h1>Trainer Premium Pass</h1>
-        {premium && (
-          <div className="premium-owned">
-            <Crown size={16} />
-            <strong>Pase activo</strong>
-          </div>
-        )}
-        <AuthBox next="/premium" />
-        <FormFeedback error={error} next="/premium" />
-        <button className="primary-button panel-submit premium-cta" disabled={loading || premium || !authUser} type="submit">
-          {loading ? <Loader2 className="spin" size={18} /> : <CreditCard size={18} />}
-          {premium ? 'Premium activo' : 'Comprar pase'}
+    <main className="bot-entry-screen">
+      <section className="bot-entry-card">
+        <div className="bot-entry-icon"><Crown size={24} /></div>
+        <p className="eyebrow">Compra de prueba</p>
+        <h1>Tienda de damas</h1>
+        <p className="bot-entry-copy">
+          Compra de prueba para desbloquear tableros y fichas.
+        </p>
+        <p className="muted-copy">{status}</p>
+        <FormFeedback error={error} />
+        <button className="bot-entry-submit" disabled={loading || authUser.premium} onClick={checkout} type="button">
+          {loading ? <Loader2 className="spin" size={18} /> : <Crown size={18} />}
+          {authUser.premium ? 'Compra activa' : 'Comprar con Stripe'}
         </button>
-      </form>
-    </ScreenShell>
+        <Link className="bot-entry-secondary" to="/profile">Volver al perfil</Link>
+      </section>
+    </main>
   );
 }

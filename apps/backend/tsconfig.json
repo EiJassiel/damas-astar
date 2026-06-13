@@ -8,5 +8,27 @@
     "types": ["bun"],
     "outDir": "dist"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/engine",
+    "src/scripts",
+    "src/repositories/battle.repository.ts",
+    "src/repositories/move.repository.ts",
+    "src/repositories/pokemon.repository.ts",
+    "src/repositories/room.repository.ts",
+    "src/repositories/type.repository.ts",
+    "src/routes/battle.routes.ts",
+    "src/routes/room.routes.ts",
+    "src/routes/pokemon.routes.ts",
+    "src/routes/import.routes.ts",
+    "src/routes/payment.routes.ts",
+    "src/services/battle.service.ts",
+    "src/services/room.service.ts",
+    "src/services/pokemon.service.ts",
+    "src/services/import.service.ts",
+    "src/services/payment.service.ts",
+    "src/types/battle.types.ts",
+    "src/types/pokemon.types.ts",
+    "src/types/api.types.ts"
+  ]
 }

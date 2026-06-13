@@ -1,12 +1,9 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { Loader2, Plus } from 'lucide-react';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { Bot, Loader2, Route as RouteIcon, Swords } from 'lucide-react';
 import { FormEvent, useState } from 'react';
-import { AuthBox } from '../components/AuthBox';
 import { FormFeedback } from '../components/FormFeedback';
-import { PanelIcon, ScreenShell } from '../components/ScreenShell';
-import { isAuthSessionError } from '../components/SessionExpiredNotice';
-import { useAuthUser } from '../context/AuthContext';
-import { api, getAuthUser, saveSession } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { api, saveSession } from '../services/api';
 
 export const Route = createFileRoute('/create-room')({
   component: CreateRoomPage
@@ -14,47 +11,69 @@ export const Route = createFileRoute('/create-room')({
 
 function CreateRoomPage() {
   const navigate = useNavigate();
-  const { authUser, markSessionExpired } = useAuthUser();
+  const { authUser } = useAuth();
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const user = getAuthUser();
-    if (!user) {
-      setError('Inicia sesion con Google para crear una sala.');
-      return;
-    }
     setLoading(true);
     setError('');
     try {
-      const room = await api.createRoom(user.token);
-      saveSession({ code: room.code, playerId: room.playerId, playerName: user.name, playerEmail: user.email });
+      const room = authUser
+        ? await api.createCheckersRoom(difficulty)
+        : await api.createGuestCheckersRoom(difficulty);
+      await api.addCheckersBot(room.code, difficulty, authUser ? undefined : room.playerId);
+      saveSession({ code: room.code, playerId: room.playerId, playerName: room.playerName });
       await navigate({ to: '/lobby/$code', params: { code: room.code } });
     } catch (err) {
-      if (isAuthSessionError(err)) {
-        markSessionExpired();
-        setError('');
-      } else {
-        setError(err instanceof Error ? err.message : 'No se pudo crear la sala.');
-      }
+      setError(err instanceof Error ? err.message : 'No se pudo crear la sala.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <ScreenShell backLabel="Arena">
-      <form className="command-panel" onSubmit={submit}>
-        <PanelIcon><Plus size={28} /></PanelIcon>
-        <h1>Crear sala</h1>
-        <AuthBox next="/create-room" />
-        <FormFeedback error={error} next="/create-room" />
-        <button className="primary-button panel-submit" disabled={loading || !authUser} type="submit">
-          {loading ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
-          Crear sala
+    <main className="bot-entry-screen">
+      <Link className="bot-entry-back" to="/">Volver</Link>
+      <form className="bot-entry-card" onSubmit={submit}>
+        <div className="bot-entry-icon"><Bot size={24} /></div>
+        <p className="eyebrow">{authUser ? 'Partida guardada' : 'Partida rapida'}</p>
+        <h1>Damas</h1>
+        <p className="bot-entry-copy">
+          {authUser
+            ? `Jugador: ${authUser.name}. La partida queda ligada a tu cuenta.`
+            : 'Juega sin cuenta. Si quieres guardar la partida y ver tu historial, crea una cuenta.'}
+        </p>
+        {!authUser && (
+          <p className="muted-copy">
+            <Link to="/register">Crear cuenta</Link>
+            {' · '}
+            <Link to="/login">Iniciar sesion</Link>
+          </p>
+        )}
+        <label htmlFor="create-bot-difficulty">Dificultad</label>
+        <select
+          id="create-bot-difficulty"
+          className="bot-entry-input"
+          value={difficulty}
+          onChange={(event) => setDifficulty(event.target.value as 'easy' | 'medium' | 'hard')}
+        >
+          <option value="easy">Facil</option>
+          <option value="medium">Media</option>
+          <option value="hard">Dificil</option>
+        </select>
+        <p className="muted-copy">
+          <RouteIcon size={16} aria-hidden="true" />
+          La computadora juega con A*.
+        </p>
+        <FormFeedback error={error} />
+        <button className="bot-entry-submit" disabled={loading} type="submit">
+          {loading ? <Loader2 className="spin" size={18} /> : <Swords size={18} />}
+          Crear partida
         </button>
       </form>
-    </ScreenShell>
+    </main>
   );
 }

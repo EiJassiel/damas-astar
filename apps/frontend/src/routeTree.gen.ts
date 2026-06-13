@@ -9,20 +9,35 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RegisterRouteImport } from './routes/register'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PremiumRouteImport } from './routes/premium'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as JoinRoomRouteImport } from './routes/join-room'
 import { Route as CreateRoomRouteImport } from './routes/create-room'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TeamCodeRouteImport } from './routes/team.$code'
-import { Route as PremiumSuccessRouteImport } from './routes/premium.success'
-import { Route as PremiumCancelRouteImport } from './routes/premium.cancel'
 import { Route as LobbyCodeRouteImport } from './routes/lobby.$code'
 import { Route as BattleCodeRouteImport } from './routes/battle.$code'
-import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PremiumRoute = PremiumRouteImport.update({
   id: '/premium',
   path: '/premium',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JoinRoomRoute = JoinRoomRouteImport.update({
@@ -45,16 +60,6 @@ const TeamCodeRoute = TeamCodeRouteImport.update({
   path: '/team/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PremiumSuccessRoute = PremiumSuccessRouteImport.update({
-  id: '/success',
-  path: '/success',
-  getParentRoute: () => PremiumRoute,
-} as any)
-const PremiumCancelRoute = PremiumCancelRouteImport.update({
-  id: '/cancel',
-  path: '/cancel',
-  getParentRoute: () => PremiumRoute,
-} as any)
 const LobbyCodeRoute = LobbyCodeRouteImport.update({
   id: '/lobby/$code',
   path: '/lobby/$code',
@@ -65,34 +70,29 @@ const BattleCodeRoute = BattleCodeRouteImport.update({
   path: '/battle/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthCallbackRoute = AuthCallbackRouteImport.update({
-  id: '/auth/callback',
-  path: '/auth/callback',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/create-room': typeof CreateRoomRoute
   '/join-room': typeof JoinRoomRoute
-  '/premium': typeof PremiumRouteWithChildren
-  '/auth/callback': typeof AuthCallbackRoute
+  '/login': typeof LoginRoute
+  '/premium': typeof PremiumRoute
+  '/profile': typeof ProfileRoute
+  '/register': typeof RegisterRoute
   '/battle/$code': typeof BattleCodeRoute
   '/lobby/$code': typeof LobbyCodeRoute
-  '/premium/cancel': typeof PremiumCancelRoute
-  '/premium/success': typeof PremiumSuccessRoute
   '/team/$code': typeof TeamCodeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/create-room': typeof CreateRoomRoute
   '/join-room': typeof JoinRoomRoute
-  '/premium': typeof PremiumRouteWithChildren
-  '/auth/callback': typeof AuthCallbackRoute
+  '/login': typeof LoginRoute
+  '/premium': typeof PremiumRoute
+  '/profile': typeof ProfileRoute
+  '/register': typeof RegisterRoute
   '/battle/$code': typeof BattleCodeRoute
   '/lobby/$code': typeof LobbyCodeRoute
-  '/premium/cancel': typeof PremiumCancelRoute
-  '/premium/success': typeof PremiumSuccessRoute
   '/team/$code': typeof TeamCodeRoute
 }
 export interface FileRoutesById {
@@ -100,12 +100,12 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/create-room': typeof CreateRoomRoute
   '/join-room': typeof JoinRoomRoute
-  '/premium': typeof PremiumRouteWithChildren
-  '/auth/callback': typeof AuthCallbackRoute
+  '/login': typeof LoginRoute
+  '/premium': typeof PremiumRoute
+  '/profile': typeof ProfileRoute
+  '/register': typeof RegisterRoute
   '/battle/$code': typeof BattleCodeRoute
   '/lobby/$code': typeof LobbyCodeRoute
-  '/premium/cancel': typeof PremiumCancelRoute
-  '/premium/success': typeof PremiumSuccessRoute
   '/team/$code': typeof TeamCodeRoute
 }
 export interface FileRouteTypes {
@@ -114,36 +114,36 @@ export interface FileRouteTypes {
     | '/'
     | '/create-room'
     | '/join-room'
+    | '/login'
     | '/premium'
-    | '/auth/callback'
+    | '/profile'
+    | '/register'
     | '/battle/$code'
     | '/lobby/$code'
-    | '/premium/cancel'
-    | '/premium/success'
     | '/team/$code'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/create-room'
     | '/join-room'
+    | '/login'
     | '/premium'
-    | '/auth/callback'
+    | '/profile'
+    | '/register'
     | '/battle/$code'
     | '/lobby/$code'
-    | '/premium/cancel'
-    | '/premium/success'
     | '/team/$code'
   id:
     | '__root__'
     | '/'
     | '/create-room'
     | '/join-room'
+    | '/login'
     | '/premium'
-    | '/auth/callback'
+    | '/profile'
+    | '/register'
     | '/battle/$code'
     | '/lobby/$code'
-    | '/premium/cancel'
-    | '/premium/success'
     | '/team/$code'
   fileRoutesById: FileRoutesById
 }
@@ -151,8 +151,10 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CreateRoomRoute: typeof CreateRoomRoute
   JoinRoomRoute: typeof JoinRoomRoute
-  PremiumRoute: typeof PremiumRouteWithChildren
-  AuthCallbackRoute: typeof AuthCallbackRoute
+  LoginRoute: typeof LoginRoute
+  PremiumRoute: typeof PremiumRoute
+  ProfileRoute: typeof ProfileRoute
+  RegisterRoute: typeof RegisterRoute
   BattleCodeRoute: typeof BattleCodeRoute
   LobbyCodeRoute: typeof LobbyCodeRoute
   TeamCodeRoute: typeof TeamCodeRoute
@@ -160,11 +162,32 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/premium': {
       id: '/premium'
       path: '/premium'
       fullPath: '/premium'
       preLoaderRoute: typeof PremiumRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join-room': {
@@ -195,20 +218,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TeamCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/premium/success': {
-      id: '/premium/success'
-      path: '/success'
-      fullPath: '/premium/success'
-      preLoaderRoute: typeof PremiumSuccessRouteImport
-      parentRoute: typeof PremiumRoute
-    }
-    '/premium/cancel': {
-      id: '/premium/cancel'
-      path: '/cancel'
-      fullPath: '/premium/cancel'
-      preLoaderRoute: typeof PremiumCancelRouteImport
-      parentRoute: typeof PremiumRoute
-    }
     '/lobby/$code': {
       id: '/lobby/$code'
       path: '/lobby/$code'
@@ -223,35 +232,17 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BattleCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/auth/callback': {
-      id: '/auth/callback'
-      path: '/auth/callback'
-      fullPath: '/auth/callback'
-      preLoaderRoute: typeof AuthCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
-
-interface PremiumRouteChildren {
-  PremiumCancelRoute: typeof PremiumCancelRoute
-  PremiumSuccessRoute: typeof PremiumSuccessRoute
-}
-
-const PremiumRouteChildren: PremiumRouteChildren = {
-  PremiumCancelRoute: PremiumCancelRoute,
-  PremiumSuccessRoute: PremiumSuccessRoute,
-}
-
-const PremiumRouteWithChildren =
-  PremiumRoute._addFileChildren(PremiumRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CreateRoomRoute: CreateRoomRoute,
   JoinRoomRoute: JoinRoomRoute,
-  PremiumRoute: PremiumRouteWithChildren,
-  AuthCallbackRoute: AuthCallbackRoute,
+  LoginRoute: LoginRoute,
+  PremiumRoute: PremiumRoute,
+  ProfileRoute: ProfileRoute,
+  RegisterRoute: RegisterRoute,
   BattleCodeRoute: BattleCodeRoute,
   LobbyCodeRoute: LobbyCodeRoute,
   TeamCodeRoute: TeamCodeRoute,

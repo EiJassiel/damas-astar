@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { collections } from '../db/mongo';
-import { verifyAuthToken } from './auth.service';
+import { getAuthUserFromToken } from '../utils/auth';
 import { AppError } from '../utils/errors';
 
 type CheckoutSessionResponse = {
@@ -18,7 +18,7 @@ type StripeCheckoutCompleted = {
       client_reference_id?: string;
       customer_email?: string;
       metadata?: {
-        googleId?: string;
+        userId?: string;
         email?: string;
       };
     };
@@ -28,28 +28,29 @@ type StripeCheckoutCompleted = {
 const stripeApi = 'https://api.stripe.com/v1';
 
 export async function createPremiumCheckout(authToken: string) {
-  const user = verifyAuthToken(authToken);
-  if (!user) throw new AppError('Sesion Google requerida.', 401);
-
+  const user = await getAuthUserFromToken(authToken);
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) throw new AppError('Falta STRIPE_SECRET_KEY en el backend.', 500);
 
   const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
   const unitAmount = process.env.STRIPE_PREMIUM_AMOUNT ?? '499';
-  const successUrl = process.env.STRIPE_SUCCESS_URL ?? `${frontendUrl}/premium/success?session_id={CHECKOUT_SESSION_ID}`;
+  const successUrl = process.env.STRIPE_SUCCESS_URL ?? `${frontendUrl}/premium?session_id={CHECKOUT_SESSION_ID}`;
+  const cancelUrl = process.env.STRIPE_CANCEL_URL ?? `${frontendUrl}/premium?canceled=1`;
   const body = new URLSearchParams({
     mode: 'payment',
-    success_url: successUrl.includes('{CHECKOUT_SESSION_ID}') ? successUrl : `${successUrl}${successUrl.includes('?') ? '&' : '?'}session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: process.env.STRIPE_CANCEL_URL ?? `${frontendUrl}/premium/cancel`,
+    success_url: successUrl.includes('{CHECKOUT_SESSION_ID}')
+      ? successUrl
+      : `${successUrl}${successUrl.includes('?') ? '&' : '?'}session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: cancelUrl,
     customer_email: user.email,
-    client_reference_id: user.googleId,
-    'metadata[googleId]': user.googleId,
+    client_reference_id: user.userId,
+    'metadata[userId]': user.userId,
     'metadata[email]': user.email,
     'line_items[0][quantity]': '1',
     'line_items[0][price_data][currency]': process.env.STRIPE_PREMIUM_CURRENCY ?? 'usd',
     'line_items[0][price_data][unit_amount]': unitAmount,
-    'line_items[0][price_data][product_data][name]': 'Trainer Premium Pass',
-    'line_items[0][price_data][product_data][description]': 'Cosmetic arcade perks for Pokemon Battle Rooms'
+    'line_items[0][price_data][product_data][name]': 'Damas Premium',
+    'line_items[0][price_data][product_data][description]': 'Cosmeticos de tablero y fichas para Damas A*'
   });
 
   const response = await fetch(`${stripeApi}/checkout/sessions`, {
@@ -66,14 +67,13 @@ export async function createPremiumCheckout(authToken: string) {
 }
 
 export async function getPremiumStatus(authToken: string) {
-  const user = verifyAuthToken(authToken);
-  if (!user) throw new AppError('Sesion Google requerida.', 401);
-  return getPremiumStatusByGoogleId(user.googleId);
+  const user = await getAuthUserFromToken(authToken);
+  return getPremiumStatusByUserId(user.userId);
 }
 
-export async function getPremiumStatusByGoogleId(googleId: string) {
+export async function getPremiumStatusByUserId(userId: string) {
   const { users } = await collections();
-  const stored = await users.findOne({ googleId });
+  const stored = await users.findOne({ userId });
   return {
     premium: Boolean(stored?.premium),
     premiumSince: stored?.premiumSince ?? null
@@ -81,9 +81,7 @@ export async function getPremiumStatusByGoogleId(googleId: string) {
 }
 
 export async function verifyPremiumCheckout(authToken: string, sessionId: string) {
-  const user = verifyAuthToken(authToken);
-  if (!user) throw new AppError('Sesion Google requerida.', 401);
-
+  const user = await getAuthUserFromToken(authToken);
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) throw new AppError('Falta STRIPE_SECRET_KEY en el backend.', 500);
 
@@ -95,27 +93,25 @@ export async function verifyPremiumCheckout(authToken: string, sessionId: string
     payment_status?: string;
     client_reference_id?: string;
     customer_email?: string;
-    metadata?: { googleId?: string; email?: string };
+    metadata?: { userId?: string; email?: string };
     error?: { message?: string };
   };
   if (!response.ok || !session.id) {
     throw new AppError(session.error?.message ?? 'No se pudo verificar el pago en Stripe.', 502, session);
   }
 
-  const sessionGoogleId = session.metadata?.googleId ?? session.client_reference_id;
-  if (sessionGoogleId && sessionGoogleId !== user.googleId) {
-    throw new AppError('Este pago pertenece a otra cuenta.', 403);
-  }
+  const sessionUserId = session.metadata?.userId ?? session.client_reference_id;
+  if (sessionUserId && sessionUserId !== user.userId) throw new AppError('Este pago pertenece a otra cuenta.', 403);
 
   if (session.payment_status === 'paid') {
     await markPremium({
-      googleId: user.googleId,
+      userId: user.userId,
       email: session.metadata?.email ?? session.customer_email ?? user.email,
       sessionId: session.id
     });
   }
 
-  const status = await getPremiumStatusByGoogleId(user.googleId);
+  const status = await getPremiumStatusByUserId(user.userId);
   return { ...status, paymentStatus: session.payment_status ?? 'unknown', verified: true };
 }
 
@@ -129,7 +125,7 @@ export async function handleStripeWebhook(payload: string, signature: string | n
   if (isCheckoutCompleted(event)) {
     const session = event.data.object;
     await markPremium({
-      googleId: session.metadata?.googleId ?? session.client_reference_id,
+      userId: session.metadata?.userId ?? session.client_reference_id,
       email: session.metadata?.email ?? session.customer_email,
       sessionId: session.id
     });
@@ -141,50 +137,22 @@ function isCheckoutCompleted(event: StripeCheckoutCompleted | { type: string }):
   return event.type === 'checkout.session.completed';
 }
 
-async function markPremium({ googleId, email, sessionId }: { googleId?: string; email?: string; sessionId: string }) {
-  if (!googleId && !email) throw new AppError('Webhook Stripe sin googleId ni email.', 400);
+async function markPremium({ userId, email, sessionId }: { userId?: string; email?: string; sessionId: string }) {
+  if (!userId && !email) throw new AppError('Webhook Stripe sin userId ni email.', 400);
 
   const { users } = await collections();
   const now = new Date();
-  const normalizedEmail = email?.toLowerCase();
+  const query = userId ? { userId } : { email: email?.toLowerCase() };
+  const existing = await users.findOne(query);
+  if (!existing) throw new AppError('No se encontro el usuario para activar premium.', 404);
 
-  if (googleId) {
-    await users.updateOne(
-      { googleId },
-      {
-        $set: {
-          premium: true,
-          premiumSince: now,
-          stripeCheckoutSessionId: sessionId,
-          updatedAt: now,
-          ...(normalizedEmail ? { email: normalizedEmail } : {})
-        },
-        $setOnInsert: {
-          googleId,
-          email: normalizedEmail ?? '',
-          name: normalizedEmail?.split('@')[0] ?? 'Entrenador',
-          createdAt: now
-        }
-      },
-      { upsert: true }
-    );
-    return;
-  }
-
-  const result = await users.updateOne(
-    { email: normalizedEmail },
-    {
-      $set: {
-        premium: true,
-        premiumSince: now,
-        stripeCheckoutSessionId: sessionId,
-        updatedAt: now
-      }
-    }
-  );
-  if (result.matchedCount === 0) {
-    throw new AppError('No se encontro el usuario para activar premium.', 404);
-  }
+  await users.replaceOne(query, {
+    ...existing,
+    premium: true,
+    premiumSince: now,
+    stripeCheckoutSessionId: sessionId,
+    updatedAt: now
+  });
 }
 
 function verifyStripeSignature(payload: string, signature: string, secret: string) {

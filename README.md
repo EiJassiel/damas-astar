@@ -1,277 +1,312 @@
-# Pokemon Battle Rooms
+# Damas A*
 
-Aplicacion web de batallas Pokemon **1P vs 1P** por salas con codigo. Los datos provienen de **PokeAPI**, se persisten en **MongoDB** y el combate lo resuelve el **backend** (frontend solo envia decisiones y muestra estado).
+Aplicacion web individual de **Damas inglesas 8x8 contra la computadora**.  
+La decision de la IA se calcula en un **microservicio independiente en Bun** usando **A\*** y nada mas.
 
-**Repositorio:** https://github.com/EiJassiel/game-poke.git
+## Que cumple del proyecto
 
----
+- Juego de damas funcional.
+- Validacion de movimientos en backend.
+- Captura obligatoria.
+- Capturas multiples.
+- Coronacion.
+- Fin de partida.
+- Login y registro con contrasenas cifradas.
+- Ranking persistido en MongoDB.
+- Pago en linea en modo prueba con Stripe.
+- Microservicio separado para IA con **A\***.
+- Docker Compose para levantar todo.
+- Tests del microservicio A*.
+
+## Variante elegida
+
+Se implementa **Damas inglesas / americanas 8x8**:
+
+- tablero de 8x8
+- juego en casillas oscuras
+- rojas empiezan
+- fichas normales avanzan en diagonal
+- reyes en ambos sentidos
+- captura obligatoria
+- captura multiple con la misma ficha
+- coronacion al llegar a la ultima fila
+
+## Arquitectura
+
+```text
+Frontend (TanStack Router)
+        |
+        v
+Backend principal (Hono + Bun)
+        |
+        +--> MongoDB
+        |
+        +--> Microservicio IA A* (Bun)
+```
+
+## Servicios y puertos
+
+| Servicio | Puerto | Funcion |
+|---|---:|---|
+| Frontend | 3000 | Interfaz del juego |
+| Backend | 3001 | Auth, reglas, partidas, ranking, pagos |
+| AI A* Service | 3004 | Calcula la jugada de la computadora |
+| MongoDB | 27017 | Persistencia |
+| Prometheus | 9090 | Metricas |
+| Grafana | 3003 | Visualizacion de metricas |
 
 ## Stack
 
-| Capa | Tecnologia |
-|------|------------|
-| Frontend | React 19, TypeScript, Vite, **TanStack Router**, TanStack Query, Framer Motion |
-| Backend | **Bun**, **Hono**, TypeScript |
-| Base de datos | **MongoDB** 7 |
-| Infra | **Docker Compose** |
-| Auth (extra) | Google OAuth + JWT |
-| Pagos (extra) | Stripe Checkout (modo test) |
+- Bun
+- Hono
+- MongoDB
+- Docker / Docker Compose
+- React
+- TanStack Router
+- Stripe test mode
 
-> **Nota sobre TanStack Start:** el enunciado pide TanStack Start. Este proyecto usa **TanStack Router** (ecosistema TanStack) con Vite como bundler. El routing, data fetching y SSR-ready patterns estan cubiertos por Router + Query; la diferencia principal es que no hay servidor SSR de TanStack Start.
+## Como funciona el microservicio A*
 
----
+Este es el punto mas importante del proyecto.
 
-## Requisitos del enunciado — como se cumplen
+La IA **no vive en el frontend** ni directamente en el backend principal.  
+La IA vive en:
 
-### Datos Pokemon y persistencia (20 pts)
+```text
+apps/ai-astar-service
+```
 
-| Requisito | Implementacion |
-|-----------|----------------|
-| Cargar ≥ 300 Pokemon desde PokeAPI | Script `apps/backend/src/scripts/import-pokemon.ts` (default 300). Tambien `POST /api/import/pokemon`. |
-| Persistir Pokemon, movimientos, tipos, stats, sprites | Colecciones MongoDB via `import.service.ts` → `pokemon`, `moves`, `types`. |
-| Relaciones de dano entre tipos desde PokeAPI | `importTypes()` lee `/type/{name}` y guarda `doubleDamageTo`, `halfDamageTo`, `noDamageTo`, etc. Motor en `engine/type-effectiveness.ts`. |
-| 4 movimientos validos por Pokemon | `chooseStoredMoves()` selecciona movimientos importados; en batalla `buildBattlePokemon()` expone exactamente 4. |
+El backend principal le manda por HTTP el estado actual del tablero y el microservicio responde con la jugada elegida.
 
-### Salas, jugadores y flujo (20 pts)
+### Flujo completo
 
-| Requisito | Implementacion |
-|-----------|----------------|
-| Crear sala con codigo | `POST /api/rooms` → codigo de 6 letras (`createBattleRoom`). |
-| Segundo jugador se une por codigo | `POST /api/rooms/:code/join`. |
-| Lobby | Ruta `/lobby/$code` con lista de jugadores y copiar codigo. |
-| Seleccion de equipo (hasta 6) | Ruta `/team/$code` + `POST /api/rooms/:code/team`. |
-| 1P vs 1P, un activo por jugador | `BattleDocument` con 2 jugadores, `activeIndex` por equipo. |
-| Backend valida acciones | `engine/validators.ts`: turno activo, movimiento permitido, sin doble accion. |
-| Frontend no calcula dano | `BattleArena` solo llama `POST /api/battles/:code/action`; dano en backend. |
+1. El jugador humano hace un movimiento en el frontend.
+2. El frontend envia ese movimiento al backend.
+3. El backend valida si el movimiento es legal.
+4. Si luego toca la computadora, el backend llama al microservicio A*.
+5. El microservicio recibe el tablero actual en JSON.
+6. El microservicio calcula la mejor jugada usando **A\***.
+7. El microservicio responde la jugada.
+8. El backend aplica esa jugada al estado de la partida.
+9. El frontend vuelve a consultar el estado y lo pinta en pantalla.
 
-### Motor de turnos, dano, tipos y estados (25 pts)
+### Endpoint principal
 
-| Requisito | Implementacion |
-|-----------|----------------|
-| Resolucion de turnos en backend | `engine/battle-engine.ts` → `resolveTurn()`. |
-| STAB, efectividad, factor aleatorio, critico | `engine/damage.ts`. |
-| Efectividad no hardcodeada | Multiplicador desde documentos `types` importados de PokeAPI. |
-| Estados 3 turnos | `engine/status.ts` → `remainingTurns: 3`. |
-| Estado se elimina al cambiar Pokemon | En switch: `active.status = null` (`battle-engine.ts` linea 33). |
-| Orden de turno | `engine/turn-order.ts` (cambio, prioridad, velocidad). |
-| Victoria / derrota | `hasLost()` + banner en frontend; abandono via `POST .../forfeit`. |
+```http
+POST /move
+```
 
-### Interfaz, sprites y animaciones (15 pts)
+URL local:
 
-| Requisito | Implementacion |
-|-----------|----------------|
-| Crear / unirse / lobby / batalla | Rutas `/`, `/create-room`, `/join-room`, `/lobby/$code`, `/battle/$code`. |
-| Sprites consistentes | URLs de PokeAPI guardadas en MongoDB y usadas en catalogo y arena. |
-| Barras de vida | `HealthBar`, barras en sidebar y HUD. |
-| Movimientos y cambio | Grid de movimientos + sidebar de equipo. |
-| Log de batalla | `BattleLog` con entradas del backend. |
-| Animaciones basicas | Framer Motion: impactos, shake del campo, numeros de dano, transiciones de sprites, barras animadas, VFX por tipo. |
+```text
+http://localhost:3004/move
+```
 
-### Documentacion, Docker y demo (20 pts)
+### Request que recibe
 
-| Entregable | Ubicacion |
-|------------|-----------|
-| Codigo completo | Este repositorio |
-| README | Este archivo |
-| docker-compose.yml | Raiz del proyecto |
-| Importacion documentada | Seccion [Importar Pokemon](#importar-pokemon) |
-| Demo 1P vs 1P | Seccion [Guia de demo en clase](#guia-de-demo-en-clase) |
+```json
+{
+  "difficulty": "medium",
+  "board": [
+    {
+      "id": "red-5-0",
+      "color": "red",
+      "kind": "man",
+      "row": 5,
+      "col": 0
+    }
+  ],
+  "currentPlayer": "black",
+  "forcedPieceId": null
+}
+```
 
----
+### Response que devuelve
 
-## Inicio rapido
+```json
+{
+  "from": { "row": 2, "col": 1 },
+  "to": { "row": 3, "col": 2 },
+  "evaluationScore": 123,
+  "algorithm": "astar",
+  "pathLength": 4,
+  "nodesExplored": 31,
+  "pathsEvaluated": 6,
+  "goalCount": 6,
+  "computeTimeMs": 2,
+  "goal": { "row": 7, "col": 0 }
+}
+```
 
-### 1. Clonar y configurar entorno
+### Que hace internamente
+
+El microservicio:
+
+- toma las jugadas legales del turno actual
+- evalua cada jugada posible
+- para cada candidata usa **A\*** como busqueda de ruta sobre metas del tablero
+- compara costos
+- devuelve la mejor opcion
+
+No usa:
+
+- Minimax
+- Alpha-Beta
+- Monte Carlo
+- algoritmo mixto
+
+Solo usa **A\*** para la decision de la jugada de la computadora.
+
+### Archivos clave del microservicio
+
+- `apps/ai-astar-service/src/index.ts`
+- `apps/ai-astar-service/src/engine.ts`
+- `apps/ai-astar-service/src/pathfinding.ts`
+- `apps/ai-astar-service/src/types.ts`
+- `apps/ai-astar-service/src/engine.test.ts`
+
+### Donde lo invoca el backend
+
+El backend lo consume desde:
+
+```text
+apps/backend/src/services/ai-client.ts
+```
+
+La logica de reglas del juego y la aplicacion del movimiento estan en:
+
+```text
+apps/backend/src/services/checkers.service.ts
+```
+
+## Instalacion con Docker
+
+### 1. Clonar el repositorio
 
 ```powershell
-git clone https://github.com/EiJassiel/game-poke.git
-cd game-poke
+git clone <URL_DEL_REPO>
+cd damas
+```
+
+### 2. Crear el archivo de entorno
+
+```powershell
 Copy-Item .env.example .env
 ```
 
-Edita `.env` con tus credenciales de Google OAuth. **No subas `.env` al repo.**
-
-### 2. Levantar con Docker
+### 3. Levantar los servicios
 
 ```powershell
-docker compose up --build -d
-docker compose ps
+docker compose up --build
 ```
 
-| Servicio | URL |
-|----------|-----|
-| Frontend | http://localhost:3000 |
-| Backend | http://localhost:3001 |
-| MongoDB | localhost:27017 |
+### 4. Abrir la aplicacion
 
-### 3. Importar Pokemon
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend health: [http://localhost:3001/health](http://localhost:3001/health)
+- IA A* health: [http://localhost:3004/health](http://localhost:3004/health)
+- Grafana: [http://localhost:3003](http://localhost:3003)
 
-Primera vez (requiere contenedores arriba):
+## Instalacion local sin Docker
 
-```powershell
-docker compose exec backend bun src/scripts/import-pokemon.ts 300
-```
+### Requisitos
 
-Alternativa via API:
+- Bun
+- MongoDB corriendo en local
 
-```powershell
-Invoke-WebRequest -Method POST -Uri http://localhost:3001/api/import/pokemon -ContentType "application/json" -Body '{"limit":300}'
-```
-
----
-
-## Google OAuth
-
-1. Crea un OAuth Client (Web) en [Google Cloud Console](https://console.cloud.google.com/).
-2. Redirect URI autorizado:
-
-```txt
-http://localhost:3001/api/auth/google/callback
-```
-
-3. Copia `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` a `.env`.
-4. Crear sala y unirse requieren sesion Google.
-
----
-
-## Guia de demo en clase
-
-Flujo alineado con la demo esperada del enunciado:
-
-1. **Levantar el proyecto** — `docker compose up --build -d` y verificar http://localhost:3000.
-2. **Importar datos** — `docker compose exec backend bun src/scripts/import-pokemon.ts 300`.
-3. **Jugador 1** — Iniciar sesion con Google → **Crear sala** → copiar codigo de 6 letras.
-4. **Jugador 2** — Otra ventana/incognito → Google → **Unirse** con el codigo.
-5. **Equipos** — Cada uno elige hasta 6 Pokemon y guarda. La batalla inicia sola cuando ambos estan listos.
-6. **Sprites y 4 movimientos** — En arena, cada Pokemon activo muestra sprite y exactamente 4 movimientos.
-7. **Turnos y dano por tipo** — Atacar con movimientos super efectivos; el log muestra *"It's super effective!"*.
-8. **Estado 3 turnos** — Usar movimientos con quemadura/veneno/paralisis; el log indica duracion y tick de dano.
-9. **Cambio elimina estado** — Cambiar Pokemon activo; el estado desaparece (backend limpia `status` en switch).
-10. **Victoria/derrota** — Debilitar los 6 del rival o usar **Salir** (abandono = derrota).
-
----
-
-## Estructura del proyecto
-
-```txt
-.
-├── apps/
-│   ├── backend/
-│   │   ├── src/engine/          # Motor de batalla (dano, tipos, estados, turnos)
-│   │   ├── src/repositories/    # Acceso MongoDB
-│   │   ├── src/routes/          # API Hono
-│   │   ├── src/scripts/         # import-pokemon.ts
-│   │   └── src/services/        # Salas, batallas, importacion, auth
-│   └── frontend/
-│       ├── src/components/      # BattleArena, HealthBar, BattleLog, etc.
-│       ├── src/routes/          # Pantallas (TanStack Router file-based)
-│       └── src/hooks/           # Polling de sala y batalla
-├── docker-compose.yml
-├── .env.example
-└── README.md
-```
-
----
-
-## Reglas de combate implementadas
-
-### Formula de dano
-
-```txt
-baseDamage = floor(floor(floor((2 * level) / 5 + 2) * power * attack / defense) / 50) + 2
-finalDamage = floor(baseDamage * modifier)
-```
-
-`modifier` incluye: STAB (1.5x), efectividad de tipos, critico (1.5x, ~1/24), variacion aleatoria (0.85–1.0), penalizacion por quemadura en ataques fisicos.
-
-### Estados
-
-| Estado | Efecto | Duracion |
-|--------|--------|----------|
-| burn | Dano por turno; -50% dano fisico | 3 turnos |
-| poison | Dano por turno | 3 turnos |
-| paralysis | Velocidad /2; 25% no moverse | 3 turnos |
-| attackDown / defenseDown / speedDown | Cambios de stats | 3 turnos |
-
-Al **cambiar de Pokemon**, el estado del activo anterior se elimina.
-
----
-
-## API principal
-
-```txt
-GET  /health
-
-GET  /api/auth/google
-GET  /api/auth/google/callback
-GET  /api/auth/me
-
-POST /api/import/pokemon
-GET  /api/pokemon
-
-POST /api/rooms
-POST /api/rooms/:code/join
-GET  /api/rooms/:code
-POST /api/rooms/:code/team
-POST /api/rooms/:code/start
-
-GET  /api/battles/:code
-POST /api/battles/:code/action
-POST /api/battles/:code/forfeit
-
-POST /api/payments/checkout      # extra: Stripe
-POST /api/payments/verify        # extra: activacion sin webhook
-POST /api/payments/webhook
-```
-
----
-
-## Desarrollo local (sin Docker)
+### Pasos
 
 ```powershell
 bun install
-# MongoDB corriendo en localhost:27017
 Copy-Item .env.example .env
-bun run dev:backend    # puerto 3001
-bun run dev:frontend   # puerto 3000
-bun run import:pokemon # importa 300 Pokemon
+bun run dev:ai-astar
+bun run dev:backend
+bun run dev:frontend
 ```
 
----
+## Variables de entorno
 
-## Funcionalidades extra (fuera del enunciado base)
+Archivo base:
 
-- **Google OAuth** — identidad real para multijugador.
-- **Trainer Premium Pass** — Stripe Checkout con cosmeticos (marco, lobby, campo estadio).
-- **Verificacion de pago** — `POST /api/payments/verify` como fallback local sin webhook.
+```env
+FRONTEND_URL=http://localhost:3000
+PORT=3001
+MONGO_URI=mongodb://localhost:27017/damas
+CORS_ORIGIN=*
+JWT_SECRET=cambia-esto-por-una-clave-larga-local
+AI_ASTAR_SERVICE_URL=http://localhost:3004
+VITE_API_URL=http://localhost:3001
+STRIPE_SECRET_KEY=sk_test_coloca_tu_clave
+STRIPE_WEBHOOK_SECRET=whsec_coloca_tu_secreto
+STRIPE_PREMIUM_AMOUNT=499
+STRIPE_PREMIUM_CURRENCY=usd
+```
 
----
+## Como usar la app
 
-## Limitaciones conocidas
+### Flujo basico
 
-- Multijugador usa **polling** (no WebSockets).
-- Frontend con **TanStack Router + Vite**, no TanStack Start SSR.
-- No hay PP por movimiento ni reglas VGC completas.
-- Algunos Pokemon se omiten en importacion si no tienen 4 movimientos validos en PokeAPI.
-- Stripe en modo test; webhook local requiere `stripe listen --forward-to localhost:3001/api/payments/webhook`.
-- Google OAuth y Stripe son opcionales para probar motor de batalla, pero **crear/unir salas requiere Google**.
+1. Registrar usuario o entrar como invitado.
+2. Crear partida.
+3. Elegir dificultad.
+4. Agregar computadora si hace falta.
+5. Iniciar partida.
+6. Jugar contra la IA.
+7. Al terminar, revisar ranking.
 
----
+### Flujo de demostracion para la rubrica
 
-## Comandos utiles
+1. Iniciar sesion.
+2. Crear partida.
+3. Empezar partida desde el lobby.
+4. Hacer varios movimientos.
+5. Mostrar que el backend valida el juego.
+6. Mostrar llamada al microservicio A*.
+7. Mostrar una captura multiple.
+8. Mostrar coronacion.
+9. Terminar partida y revisar ranking.
+10. Ir a `/premium` y hacer compra de prueba.
+11. Ejecutar tests.
+
+## Tests
 
 ```powershell
-docker compose up --build -d
-docker compose ps
-docker compose logs backend --tail=50
-docker compose logs frontend --tail=50
-docker compose exec backend bun src/scripts/import-pokemon.ts 300
+bun run test
 bun run typecheck
 bun run build
 ```
 
----
+Actualmente los tests cubren principalmente el microservicio A*:
 
-## Autor
+- busqueda de ruta
+- caso sin ruta
+- captura obligatoria
+- continuidad de captura multiple con `forcedPieceId`
 
-**EiJassiel** — Proyecto individual UTP/FISC. Entrega: 22 de mayo de 2026.
+## Estructura del proyecto
+
+```text
+apps/
+  ai-astar-service/
+  backend/
+  frontend/
+infra/
+docker-compose.yml
+README.md
+```
+
+## Limitaciones conocidas
+
+- A* no es el algoritmo ideal para damas, pero aqui se usa por requisito academico.
+- El frontend solo representa el estado; la validacion real ocurre en backend.
+- La dificultad cambia la forma de evaluacion del A*, no cambia de algoritmo.
+
+## Estado actual
+
+El proyecto ya compila y fue validado con:
+
+```powershell
+bun run typecheck
+bun run test
+bun run build
+```

@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: damas-backend
+    static_configs:
+      - targets: ['backend:3001']
+
+  - job_name: damas-ai
+    static_configs:
+      - targets: ['ai-service:3002']
+
+  - job_name: damas-ai-astar
+    static_configs:
+      - targets: ['ai-astar-service:3004']

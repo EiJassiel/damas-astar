@@ -1,18 +1,30 @@
+export type BoardTheme = 'classic' | 'neon' | 'wood';
+export type PieceStyle = 'sphere' | 'flat' | 'marble';
+
 export type UserDocument = {
-  googleId: string;
-  email: string;
+  userId: string;
   name: string;
-  picture?: string;
+  email: string;
+  passwordHash: string;
+  boardTheme: BoardTheme;
+  pieceStyle: PieceStyle;
+  unlockedThemes: BoardTheme[];
+  unlockedPieceStyles: PieceStyle[];
   premium?: boolean;
-  premiumSince?: Date;
+  premiumSince?: Date | null;
   stripeCheckoutSessionId?: string;
   createdAt: Date;
   updatedAt: Date;
 };
 
 export type AuthUser = {
-  googleId: string;
+  userId: string;
   email: string;
   name: string;
-  picture?: string;
+  boardTheme: BoardTheme;
+  pieceStyle: PieceStyle;
+  unlockedThemes: BoardTheme[];
+  unlockedPieceStyles: PieceStyle[];
+  premium?: boolean;
+  premiumSince?: Date | null;
 };
