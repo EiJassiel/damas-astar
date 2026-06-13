@@ -13,6 +13,7 @@ export type UserDocument = {
   premium?: boolean;
   premiumSince?: Date | null;
   stripeCheckoutSessionId?: string;
+  purchasedCosmetics?: string[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -27,4 +28,5 @@ export type AuthUser = {
   unlockedPieceStyles: PieceStyle[];
   premium?: boolean;
   premiumSince?: Date | null;
+  purchasedCosmetics?: string[];
 };

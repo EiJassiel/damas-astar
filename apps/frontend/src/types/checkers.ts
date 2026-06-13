@@ -13,6 +13,7 @@ export type AuthUser = {
   unlockedPieceStyles: PieceStyle[];
   premium?: boolean;
   premiumSince?: string | null;
+  purchasedCosmetics?: string[];
 };
 
 export type UserStats = {

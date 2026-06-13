@@ -79,6 +79,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ authToken: getToken() })
     }),
+  createCosmeticCheckout: (itemId: string) =>
+    request<{ checkoutUrl: string; sessionId?: string }>('/api/payments/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ authToken: getToken(), itemId })
+    }),
+  getCosmeticCatalog: () =>
+    request<{ items: Array<{ id: string; kind: 'boardTheme' | 'pieceStyle'; value: string; name: string; description: string; priceCents: number; currency: string }> }>('/api/payments/catalog'),
   getPremiumStatus: () =>
     request<{ premium: boolean; premiumSince?: string | null }>('/api/payments/status', {
       method: 'POST',

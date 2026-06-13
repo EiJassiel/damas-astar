@@ -9,6 +9,16 @@ type CheckoutSessionResponse = {
   error?: { message?: string };
 };
 
+type CosmeticItem = {
+  id: string;
+  kind: 'boardTheme' | 'pieceStyle';
+  value: string;
+  name: string;
+  description: string;
+  priceCents: number;
+  currency: string;
+};
+
 type StripeCheckoutCompleted = {
   id: string;
   type: 'checkout.session.completed';
@@ -20,6 +30,9 @@ type StripeCheckoutCompleted = {
       metadata?: {
         userId?: string;
         email?: string;
+        itemId?: string;
+        itemKind?: string;
+        itemValue?: string;
       };
     };
   };
@@ -27,13 +40,59 @@ type StripeCheckoutCompleted = {
 
 const stripeApi = 'https://api.stripe.com/v1';
 
-export async function createPremiumCheckout(authToken: string) {
+const cosmeticCatalog: CosmeticItem[] = [
+  {
+    id: 'board-wood',
+    kind: 'boardTheme',
+    value: 'wood',
+    name: 'Tablero Madera',
+    description: 'Tema de tablero con acabado de madera.',
+    priceCents: 299,
+    currency: 'usd'
+  },
+  {
+    id: 'board-neon',
+    kind: 'boardTheme',
+    value: 'neon',
+    name: 'Tablero Torneo',
+    description: 'Tema de tablero moderno con contraste alto.',
+    priceCents: 399,
+    currency: 'usd'
+  },
+  {
+    id: 'piece-flat',
+    kind: 'pieceStyle',
+    value: 'flat',
+    name: 'Fichas Planas',
+    description: 'Estilo visual de fichas planas.',
+    priceCents: 249,
+    currency: 'usd'
+  },
+  {
+    id: 'piece-marble',
+    kind: 'pieceStyle',
+    value: 'marble',
+    name: 'Fichas Piedra',
+    description: 'Estilo visual de fichas con acabado de piedra.',
+    priceCents: 349,
+    currency: 'usd'
+  }
+];
+
+export function listCosmeticItems() {
+  return cosmeticCatalog;
+}
+
+export async function createPremiumCheckout(authToken: string, itemId: string) {
   const user = await getAuthUserFromToken(authToken);
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) throw new AppError('Falta STRIPE_SECRET_KEY en el backend.', 500);
 
+  const item = cosmeticCatalog.find((candidate) => candidate.id === itemId);
+  if (!item) throw new AppError('Producto no encontrado.', 404);
+  if (isAlreadyUnlocked(user, item)) throw new AppError('Ese cosmetico ya esta desbloqueado.', 409);
+
   const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
-  const unitAmount = process.env.STRIPE_PREMIUM_AMOUNT ?? '499';
   const successUrl = process.env.STRIPE_SUCCESS_URL ?? `${frontendUrl}/premium?session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = process.env.STRIPE_CANCEL_URL ?? `${frontendUrl}/premium?canceled=1`;
   const body = new URLSearchParams({
@@ -46,11 +105,14 @@ export async function createPremiumCheckout(authToken: string) {
     client_reference_id: user.userId,
     'metadata[userId]': user.userId,
     'metadata[email]': user.email,
+    'metadata[itemId]': item.id,
+    'metadata[itemKind]': item.kind,
+    'metadata[itemValue]': item.value,
     'line_items[0][quantity]': '1',
-    'line_items[0][price_data][currency]': process.env.STRIPE_PREMIUM_CURRENCY ?? 'usd',
-    'line_items[0][price_data][unit_amount]': unitAmount,
-    'line_items[0][price_data][product_data][name]': 'Damas Premium',
-    'line_items[0][price_data][product_data][description]': 'Cosmeticos de tablero y fichas para Damas A*'
+    'line_items[0][price_data][currency]': item.currency,
+    'line_items[0][price_data][unit_amount]': String(item.priceCents),
+    'line_items[0][price_data][product_data][name]': item.name,
+    'line_items[0][price_data][product_data][description]': item.description
   });
 
   const response = await fetch(`${stripeApi}/checkout/sessions`, {
@@ -76,7 +138,8 @@ export async function getPremiumStatusByUserId(userId: string) {
   const stored = await users.findOne({ userId });
   return {
     premium: Boolean(stored?.premium),
-    premiumSince: stored?.premiumSince ?? null
+    premiumSince: stored?.premiumSince ?? null,
+    purchasedCosmetics: stored?.purchasedCosmetics ?? []
   };
 }
 
@@ -93,7 +156,13 @@ export async function verifyPremiumCheckout(authToken: string, sessionId: string
     payment_status?: string;
     client_reference_id?: string;
     customer_email?: string;
-    metadata?: { userId?: string; email?: string };
+    metadata?: {
+      userId?: string;
+      email?: string;
+      itemId?: string;
+      itemKind?: string;
+      itemValue?: string;
+    };
     error?: { message?: string };
   };
   if (!response.ok || !session.id) {
@@ -104,10 +173,13 @@ export async function verifyPremiumCheckout(authToken: string, sessionId: string
   if (sessionUserId && sessionUserId !== user.userId) throw new AppError('Este pago pertenece a otra cuenta.', 403);
 
   if (session.payment_status === 'paid') {
-    await markPremium({
+    await applyPurchase({
       userId: user.userId,
       email: session.metadata?.email ?? session.customer_email ?? user.email,
-      sessionId: session.id
+      sessionId: session.id,
+      itemId: session.metadata?.itemId,
+      itemKind: session.metadata?.itemKind,
+      itemValue: session.metadata?.itemValue
     });
   }
 
@@ -124,10 +196,13 @@ export async function handleStripeWebhook(payload: string, signature: string | n
   const event = JSON.parse(payload) as StripeCheckoutCompleted | { type: string };
   if (isCheckoutCompleted(event)) {
     const session = event.data.object;
-    await markPremium({
+    await applyPurchase({
       userId: session.metadata?.userId ?? session.client_reference_id,
       email: session.metadata?.email ?? session.customer_email,
-      sessionId: session.id
+      sessionId: session.id,
+      itemId: session.metadata?.itemId,
+      itemKind: session.metadata?.itemKind,
+      itemValue: session.metadata?.itemValue
     });
   }
   return { received: true };
@@ -137,22 +212,56 @@ function isCheckoutCompleted(event: StripeCheckoutCompleted | { type: string }):
   return event.type === 'checkout.session.completed';
 }
 
-async function markPremium({ userId, email, sessionId }: { userId?: string; email?: string; sessionId: string }) {
+async function applyPurchase({
+  userId,
+  email,
+  sessionId,
+  itemId,
+  itemKind,
+  itemValue
+}: {
+  userId?: string;
+  email?: string;
+  sessionId: string;
+  itemId?: string;
+  itemKind?: string;
+  itemValue?: string;
+}) {
   if (!userId && !email) throw new AppError('Webhook Stripe sin userId ni email.', 400);
+  if (!itemId || !itemKind || !itemValue) throw new AppError('Compra sin metadatos del cosmetico.', 400);
 
   const { users } = await collections();
   const now = new Date();
   const query = userId ? { userId } : { email: email?.toLowerCase() };
   const existing = await users.findOne(query);
-  if (!existing) throw new AppError('No se encontro el usuario para activar premium.', 404);
+  if (!existing) throw new AppError('No se encontro el usuario para activar la compra.', 404);
+
+  const purchasedCosmetics = new Set(existing.purchasedCosmetics ?? []);
+  purchasedCosmetics.add(itemId);
+  const unlockedThemes = new Set(existing.unlockedThemes);
+  const unlockedPieceStyles = new Set(existing.unlockedPieceStyles);
+
+  if (itemKind === 'boardTheme') unlockedThemes.add(itemValue as 'classic' | 'wood' | 'neon');
+  if (itemKind === 'pieceStyle') unlockedPieceStyles.add(itemValue as 'sphere' | 'flat' | 'marble');
 
   await users.replaceOne(query, {
     ...existing,
     premium: true,
-    premiumSince: now,
+    premiumSince: existing.premiumSince ?? now,
     stripeCheckoutSessionId: sessionId,
+    purchasedCosmetics: [...purchasedCosmetics],
+    unlockedThemes: [...unlockedThemes],
+    unlockedPieceStyles: [...unlockedPieceStyles],
     updatedAt: now
   });
+}
+
+function isAlreadyUnlocked(
+  user: Awaited<ReturnType<typeof getAuthUserFromToken>>,
+  item: CosmeticItem
+) {
+  if (item.kind === 'boardTheme') return user.unlockedThemes.includes(item.value as 'classic' | 'wood' | 'neon');
+  return user.unlockedPieceStyles.includes(item.value as 'sphere' | 'flat' | 'marble');
 }
 
 function verifyStripeSignature(payload: string, signature: string, secret: string) {

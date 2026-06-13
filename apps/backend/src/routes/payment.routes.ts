@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { createPremiumCheckout, getPremiumStatus, handleStripeWebhook, verifyPremiumCheckout } from '../services/payment.service';
+import { createPremiumCheckout, getPremiumStatus, handleStripeWebhook, listCosmeticItems, verifyPremiumCheckout } from '../services/payment.service';
 
 export const paymentRoutes = new Hono();
 
 const authSchema = z.object({
-  authToken: z.string().min(1)
+  authToken: z.string().min(1),
+  itemId: z.string().min(1).optional()
 });
 
 const verifySchema = z.object({
@@ -15,8 +16,10 @@ const verifySchema = z.object({
 
 paymentRoutes.post('/checkout', async (c) => {
   const body = authSchema.parse(await c.req.json());
-  return c.json(await createPremiumCheckout(body.authToken));
+  return c.json(await createPremiumCheckout(body.authToken, body.itemId ?? ''));
 });
+
+paymentRoutes.get('/catalog', (c) => c.json({ items: listCosmeticItems() }));
 
 paymentRoutes.post('/status', async (c) => {
   const body = authSchema.parse(await c.req.json());

@@ -47,7 +47,8 @@ export function toAuthUser(user: UserDocument): AuthUser {
     unlockedThemes: user.unlockedThemes,
     unlockedPieceStyles: user.unlockedPieceStyles,
     premium: Boolean(user.premium),
-    premiumSince: user.premiumSince ?? null
+    premiumSince: user.premiumSince ?? null,
+    purchasedCosmetics: user.purchasedCosmetics ?? []
   };
 }
 
