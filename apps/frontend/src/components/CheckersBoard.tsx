@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { motion } from 'framer-motion';
 import { Crown } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -154,7 +155,7 @@ function pieceAt(board: CheckersPiece[], square: Square) {
   return board.find((piece) => piece.row === square.row && piece.col === square.col);
 }
 
-function Piece({ piece, pieceStyle }: { piece: CheckersPiece; pieceStyle: PieceStyle }) {
+const Piece = memo(function Piece({ piece, pieceStyle }: { piece: CheckersPiece; pieceStyle: PieceStyle }) {
   return (
     <motion.span
       layout
@@ -166,7 +167,7 @@ function Piece({ piece, pieceStyle }: { piece: CheckersPiece; pieceStyle: PieceS
       {piece.kind === 'king' && <Crown size={22} />}
     </motion.span>
   );
-}
+});
 
 function squareName(square: Square) {
   return `${String.fromCharCode(65 + square.col)}${8 - square.row}`;

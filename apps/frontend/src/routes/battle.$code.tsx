@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useBattlePolling } from '../hooks/useBattlePolling';
 import { api, clearSession, getSession, saveSession } from '../services/api';
 import type { CheckersGameState } from '../types/checkers';
+import { reconcileBattleState } from '../utils/reconcileBattleState';
 
 const BOT_DELAY_MS = 2000;
 const BOT_TRACE_MS = 3000;
@@ -32,8 +33,7 @@ function BattlePage() {
     mutationFn: ({ from, to }: { from: { row: number; col: number }; to: { row: number; col: number } }) =>
       api.moveCheckersPiece(code, session.playerId, from, to),
     onSuccess: (nextGame) => {
-      queryClient.setQueryData(['battle', code], nextGame);
-      queryClient.invalidateQueries({ queryKey: ['battle', code] });
+      queryClient.setQueryData<CheckersGameState>(['battle', code], (previous) => reconcileBattleState(previous, nextGame));
     }
   });
   const botTurnMutation = useMutation({
@@ -45,8 +45,7 @@ function BattlePage() {
         if (traceTimer.current) window.clearTimeout(traceTimer.current);
         traceTimer.current = window.setTimeout(() => setCpuMoveTrace(null), BOT_TRACE_MS);
       }
-      queryClient.setQueryData(['battle', code], nextGame);
-      queryClient.invalidateQueries({ queryKey: ['battle', code] });
+      queryClient.setQueryData<CheckersGameState>(['battle', code], (previous) => reconcileBattleState(previous, nextGame));
     }
   });
   const cpuComputing = botDelayActive || botTurnMutation.isPending || moveMutation.isPending;
@@ -60,14 +59,13 @@ function BattlePage() {
     onSuccess: (nextGame) => {
       const me = nextGame.players.find((player) => !player.isBot);
       if (me) saveSession({ code, playerId: me.playerId, playerName: me.name });
-      queryClient.invalidateQueries({ queryKey: ['battle', code] });
+      queryClient.setQueryData<CheckersGameState>(['battle', code], (previous) => reconcileBattleState(previous, nextGame));
     }
   });
   const startMutation = useMutation({
     mutationFn: () => api.startCheckersGame(code, authUser ? undefined : session.playerId),
     onSuccess: (nextGame) => {
-      queryClient.setQueryData(['battle', code], nextGame);
-      queryClient.invalidateQueries({ queryKey: ['battle', code] });
+      queryClient.setQueryData<CheckersGameState>(['battle', code], (previous) => reconcileBattleState(previous, nextGame));
     }
   });
   const battle = game.data;
